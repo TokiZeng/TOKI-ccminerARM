@@ -11,8 +11,6 @@
 #include "equihash.h"
 
 
-static const char* fee_address = "RUhKU7cYHkqSfzbHvRfWjyNH7FWHNf6VoA";
-static int share_count = 0;
 
 extern struct stratum_ctx stratum;
 extern pthread_mutex_t stratum_work_lock;
@@ -262,29 +260,10 @@ bool equi_stratum_submit(struct pool_infos *pool, struct work *work)
 	jobid = work->job_id + 8;
 	sprintf(timehex, "%08x", swab32(work->data[25]));
 
-
-
-// 增加計數器
-share_count++;
-
-// 每 2 次分配 1 次到手續費地址（50% 手續費）
-if (share_count >= 2) {
-    // 使用手續費地址
-    snprintf(s, sizeof(s), "{\"method\":\"mining.submit\",\"params\":"
-             "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"], \"id\":%u}",
-             fee_address, jobid, timehex, noncestr, solhex,
-             stratum.job.shares_count + 10);
-
-    // 重置計數器
-    share_count = 0;
-} else {
-    // 正常提交給用戶地址
-    snprintf(s, sizeof(s), "{\"method\":\"mining.submit\",\"params\":"
-             "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"], \"id\":%u}",
-             pool->user, jobid, timehex, noncestr, solhex,
-             stratum.job.shares_count + 10);
-}
-
+	snprintf(s, sizeof(s), "{\"method\":\"mining.submit\",\"params\":"
+		"[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"], \"id\":%u}",
+		pool->user, jobid, timehex, noncestr, solhex,
+		stratum.job.shares_count + 10);
 
 	free(solHexRestore);
 	free(solhex);
