@@ -234,50 +234,61 @@ void equi_store_work_solution(struct work* work, uint32_t* hash, void* sol_data)
 // called by submit_upstream_work()
 bool equi_stratum_submit(struct pool_infos *pool, struct work *work)
 {
-	char _ALIGN(64) s[JSON_SUBMIT_BUF_LEN];
-	char _ALIGN(64) timehex[16] = { 0 };
-	char *jobid, *noncestr, *solhex;
-	int idnonce = work->submit_nonce_id;
+    char _ALIGN(64) s[JSON_SUBMIT_BUF_LEN];
+    char _ALIGN(64) timehex[16] = { 0 };
+    char *jobid, *noncestr, *solhex;
+    int idnonce = work->submit_nonce_id;
 
-	// scanned nonce
-	work->data[EQNONCE_OFFSET] = work->nonces[idnonce];
-	unsigned char * nonce = (unsigned char*) (&work->data[27]);
-	size_t nonce_len = 32 - stratum.xnonce1_size;
-	// long nonce without pool prefix (extranonce)
-	noncestr = bin2hex(&nonce[stratum.xnonce1_size], nonce_len);
+    // scanned nonce
+    work->data[EQNONCE_OFFSET] = work->nonces[idnonce];
+    unsigned char *nonce = (unsigned char*)(&work->data[27]);
+    size_t nonce_len = 32 - stratum.xnonce1_size;
+    // long nonce without pool prefix (extranonce)
+    noncestr = bin2hex(&nonce[stratum.xnonce1_size], nonce_len);
 
-	solhex = (char*) calloc(1, 1344*2 + 64);
-	if (!solhex || !noncestr) {
-		applog(LOG_ERR, "unable to alloc share memory");
-		return false;
-	}
-	cbin2hex(solhex, (const char*) work->extra, 1347);
+    solhex = (char*)calloc(1, 1344*2 + 64);
+    if (!solhex || !noncestr) {
+        applog(LOG_ERR, "unable to alloc share memory");
+        return false;
+    }
+    cbin2hex(solhex, (const char*)work->extra, 1347);
 
-	char* solHexRestore = (char*) calloc(129, 1);
+    char* solHexRestore = (char*)calloc(129, 1);
     cbin2hex(solHexRestore, (const char*)&work->solution[8], 64);
     memcpy(&solhex[6+16], solHexRestore, 128);
 
-	jobid = work->job_id + 8;
-	sprintf(timehex, "%08x", swab32(work->data[25]));
+    jobid = work->job_id + 8;
+    sprintf(timehex, "%08x", swab32(work->data[25]));
 
-	snprintf(s, sizeof(s), "{\"method\":\"mining.submit\",\"params\":"
-		"[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"], \"id\":%u}",
-		pool->user, jobid, timehex, noncestr, solhex,
-		stratum.job.shares_count + 10);
+    snprintf(s, sizeof(s), "{\"method\":\"mining.submit\",\"params\":"
+        "[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"], \"id\":%u}",
+        pool->user, jobid, timehex, noncestr, solhex,
+        stratum.job.shares_count + 10);
 
-	free(solHexRestore);
-	free(solhex);
-	free(noncestr);
+    free(solHexRestore);
+    free(solhex);
+    free(noncestr);
 
-	gettimeofday(&stratum.tv_submit, NULL);
+    gettimeofday(&stratum.tv_submit, NULL);
 
-	if(!stratum_send_line(&stratum, s)) {
-		applog(LOG_ERR, "%s stratum_send_line failed", __func__);
-		return false;
-	}
+    // 新增提交伺服器地址的詳細日誌
+    applog(LOG_NOTICE, "[DEBUG] 正在提交至伺服器: %s，用戶: %s", stratum.url, pool->user);
 
-	stratum.sharediff = work->sharediff[idnonce];
-	stratum.job.shares_count++;
+    // 重試提交機制
+    int max_retries = 3;
+    int retry_delay = 2;
+    for (int attempt = 0; attempt < max_retries; ++attempt) {
+        if (stratum_send_line(&stratum, s)) {
+            // 成功提交，退出重試循環
+            stratum.sharediff = work->sharediff[idnonce];
+            stratum.job.shares_count++;
+            return true;
+        }
+        applog(LOG_WARNING, "[DEBUG] 提交失敗，重試 #%d ...", attempt + 1);
+        sleep(retry_delay);
+    }
 
-	return true;
+    applog(LOG_ERR, "[DEBUG] %s stratum_send_line 多次失敗後無法提交", __func__);
+    return false;
 }
+

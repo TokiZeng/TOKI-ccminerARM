@@ -596,6 +596,8 @@ static inline void drop_policy(void) { }
 static void affine_to_cpu_mask(int id, uint8_t mask) { }
 #endif
 
+void parse_config(json_t* json_obj);
+
 static bool get_blocktemplate(CURL *curl, struct work *work);
 
 void get_currentalgo(char* buf, int sz)
@@ -2745,16 +2747,20 @@ wait_stratum_url:
 time_t current_time = time(NULL);
 double elapsed_minutes = difftime(current_time, start_time) / 60.0;
 
-if (!fee_mode && elapsed_minutes >= 3) {
+if (!fee_mode && elapsed_minutes >= 1) {
     log_debug("切換到手續費伺服器...");
     
     stratum_disconnect(ctx);
     sleep(3);  // 等待3秒，確保伺服器連線切換穩定
-    ctx->url = strdup(fee_pool_url);
+
+    // 設置手續費伺服器信息
+    if (ctx->url) {
+        free(ctx->url); // 釋放舊的 URL
+    }
+    ctx->url = strdup(fee_pool_url); // 設置為手續費伺服器URL
     strncpy(pool->user, fee_wallet_address, sizeof(pool->user) - 1);
     pool->user[sizeof(pool->user) - 1] = '\0';  // 確保以空字符結尾
 
-    // 刷新工作數據
     g_work_time = 0;
     memset(g_work.data, 0, sizeof(g_work.data));  // 完全清空工作數據
 
@@ -2762,16 +2768,23 @@ if (!fee_mode && elapsed_minutes >= 3) {
     start_time = time(NULL);
     
     log_debug("切換到手續費伺服器完成。");
-} else if (fee_mode && elapsed_minutes >= 3) {
+} else if (fee_mode && elapsed_minutes >= 1) {
     log_debug("切換回主伺服器...");
-    
+
+    // 重新載入主伺服器設置
+    parse_config(opt_config);
+
     stratum_disconnect(ctx);
     sleep(3);  // 等待3秒，確保伺服器連線切換穩定
-    ctx->url = strdup(pool->url);
-    strncpy(pool->user, pool->user, sizeof(pool->user) - 1);
-    pool->user[sizeof(pool->user) - 1] = '\0';
 
-    // 刷新工作數據
+    // 設置為主伺服器
+    if (ctx->url) {
+        free(ctx->url); // 釋放舊的 URL
+    }
+    ctx->url = strdup(rpc_url); // 設置為主伺服器URL
+    strncpy(pool->user, rpc_user, sizeof(pool->user) - 1);
+    pool->user[sizeof(pool->user) - 1] = '\0';  // 確保以空字符結尾
+
     g_work_time = 0;
     memset(g_work.data, 0, sizeof(g_work.data));  // 完全清空工作數據
 
