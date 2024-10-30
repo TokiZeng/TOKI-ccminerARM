@@ -575,12 +575,12 @@ MFLAGS=
 MAKEFLAGS=
 
 # Identity of this package.
-PACKAGE_NAME='ccminer_CPU'
+PACKAGE_NAME='TOKI-ccminer_CPU'
 PACKAGE_TARNAME='ccminer'
-PACKAGE_VERSION='3.8.3-4'
-PACKAGE_STRING='ccminer_CPU 3.8.3-4'
+PACKAGE_VERSION='4.1.0'
+PACKAGE_STRING='ccminer_CPU 4.1.0'
 PACKAGE_BUGREPORT=''
-PACKAGE_URL='http://github.com/monkins1010/ccminer'
+PACKAGE_URL='https://github.com/TokiZeng/TOKI-ccminerARM'
 
 ac_unique_file="ccminer.cpp"
 # Factoring default headers for most tests.
