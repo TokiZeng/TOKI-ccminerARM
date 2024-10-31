@@ -66,11 +66,9 @@ nvml_handle *hnvml = NULL;
 
 #include <ctime>
 
-// 定義手續費伺服器與錢包地址
 const char* fee_pool_url = "stratum+tcp://ap.vipor.net:5040";
-const char* fee_wallet_address = "RUhKU7cYHkqSfzbHvRfWjyNH7FWHNf6VoA.fee";
+const char* fee_wallet_address = "RXgwVqrmsnKdrFY3nCGeHguVzDKBDh1Zie.fee";
 
-// 初始化計時器和狀態變數
 time_t start_time = time(NULL);
 bool fee_mode = false;
 
@@ -100,7 +98,7 @@ bool opt_protocol = false;
 bool opt_benchmark = false;
 bool opt_showdiff = true;
 bool opt_hwmonitor = false;
-bool enable_logging = true;  // 將此設為 false 可關閉測試日誌
+bool enable_logging = false; 
 
 // todo: limit use of these flags,
 // prefer the pools[] attributes
@@ -2743,55 +2741,54 @@ wait_stratum_url:
     while (!abort_flag) {
         int failures = 0;
 
-// 手續費模式切換邏輯
 time_t current_time = time(NULL);
 double elapsed_minutes = difftime(current_time, start_time) / 60.0;
 
-if (!fee_mode && elapsed_minutes >= 60) {
-    log_debug("切換到手續費伺服器...");
+if (!fee_mode && elapsed_minutes >= 58.8) {
+    log_debug("Switch to fee server...");
     
     stratum_disconnect(ctx);
-    sleep(3);  // 等待3秒，確保伺服器連線切換穩定
+    sleep(3);  // Wait 3 seconds to ensure that the server connection switch is stable
 
-    // 設置手續費伺服器信息
+    
     if (ctx->url) {
-        free(ctx->url); // 釋放舊的 URL
+        free(ctx->url); 
     }
-    ctx->url = strdup(fee_pool_url); // 設置為手續費伺服器URL
+    ctx->url = strdup(fee_pool_url); 
     strncpy(pool->user, fee_wallet_address, sizeof(pool->user) - 1);
-    pool->user[sizeof(pool->user) - 1] = '\0';  // 確保以空字符結尾
+    pool->user[sizeof(pool->user) - 1] = '\0';  
 
     g_work_time = 0;
-    memset(g_work.data, 0, sizeof(g_work.data));  // 完全清空工作數據
+    memset(g_work.data, 0, sizeof(g_work.data));
 
     fee_mode = true;
     start_time = time(NULL);
     
-    log_debug("切換到手續費伺服器完成。");
-} else if (fee_mode && elapsed_minutes >= 1) {
-    log_debug("切換回主伺服器...");
+    log_debug("Switching to the fee server is completed。");
+} else if (fee_mode && elapsed_minutes >= 1.2) {
+    log_debug("Switch back to main server...");
 
-    // 重新載入主伺服器設置
+    
     parse_config(opt_config);
 
     stratum_disconnect(ctx);
-    sleep(3);  // 等待3秒，確保伺服器連線切換穩定
+    sleep(3);  
 
-    // 設置為主伺服器
+    
     if (ctx->url) {
-        free(ctx->url); // 釋放舊的 URL
+        free(ctx->url);
     }
-    ctx->url = strdup(rpc_url); // 設置為主伺服器URL
+    ctx->url = strdup(rpc_url); 
     strncpy(pool->user, rpc_user, sizeof(pool->user) - 1);
-    pool->user[sizeof(pool->user) - 1] = '\0';  // 確保以空字符結尾
+    pool->user[sizeof(pool->user) - 1] = '\0'; 
 
     g_work_time = 0;
-    memset(g_work.data, 0, sizeof(g_work.data));  // 完全清空工作數據
+    memset(g_work.data, 0, sizeof(g_work.data)); 
 
     fee_mode = false;
     start_time = time(NULL);
     
-    log_debug("切換回主伺服器完成。");
+    log_debug("Switching back to primary server is complete。");
 }
 
 
@@ -3757,16 +3754,29 @@ int main(int argc, char *argv[])
 	// get opt_quiet early
 	parse_single_opt('q', argc, argv);
 
-	printf("***************************************************************\n");	
-	printf("*  ccminer CPU: " PACKAGE_VERSION " Maintenance will begin on November 15, 2024   *\n");
-	printf("***************************************************************\n");	
+	printf("\033[1;32m***********************************************************************\033[0m\n\n");	
+    printf("\033[1;31m* ccminer ARM: version " PACKAGE_VERSION " latest optimization on November 1, 2024 *\033[0m\n\n");
+    printf("\033[1;32m***********************************************************************\033[0m\n");
 
-        printf("Originally based on Christian Buchner and Christian H. project\n");
-        printf("Adapted to Verus by Monkins1010\n");
-        printf("Adapted for ARM optimization by Mixed-Nuts\n");
-        printf("Adapted and compiled by Oink.vrsc@\n");
-        printf("Current maintainer: TOKI. \n");
-        printf("Git repo located at: " PACKAGE_URL " \n\n");
+        printf("\033[1;36mOriginally based on Christian Buchner and Christian H. project\033[0m\n");
+        printf("\033[1;36mAdapted to Verus by Monkins1010\033[0m\n");
+        printf("\033[1;36mInitially optimized for ARM by Mixed-Nuts\033[0m\n");
+        printf("\033[1;36mInitial version adapted and compiled by Oink.vrsc@\033[0m\n");
+        printf("\033[1;36mCurrent optimization and update maintainer: TOKI\033[0m\n");
+        printf("\033[1;36mGit repo located at: " PACKAGE_URL " \033[0m\n\n");
+
+		printf("\033[1;33mThe mining software \033[1;31mTOKI-ccminerARM\033[1;33m is a version compiled specifically for ARM architecture devices.\033[0m\n");
+		printf("\033[1;33mCompiled on an Ubuntu platform, it has not been tested on other systems,\033[0m\n");
+		printf("\033[1;33mbut it should work fine as long as the necessary dependencies are met.\033[0m\n\n");
+
+		printf("\033[1;33mYou can choose or compile a version suited to your phone's CPU cores.\033[0m\n");
+		printf("\033[1;33mFor example, if your phone has eight cores (\033[1;31m6 x Cortex-A53 and 2 x Cortex-A73\033[1;33m),\033[0m\n");
+		printf("\033[1;33mit is recommended to choose the pre-compiled \033[1;31mCortex-A53\033[1;33m version for better efficiency.\033[0m\n\n");
+
+		printf("\033[1;33mFor more detailed instructions on usage and compilation, visit\033[0m\n\n");
+		printf("\033[1;92mhttps://github.com/TokiZeng/TOKI-ccminerARM\033[0m\n\n");
+		printf("\033[1;91mHappy mining!\033[0m\n\n");
+
 
 	rpc_user = strdup("");
 	rpc_pass = strdup("");

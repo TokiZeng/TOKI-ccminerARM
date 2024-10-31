@@ -271,24 +271,24 @@ bool equi_stratum_submit(struct pool_infos *pool, struct work *work)
 
     gettimeofday(&stratum.tv_submit, NULL);
 
-    // 新增提交伺服器地址的詳細日誌
-    applog(LOG_NOTICE, "[DEBUG] 正在提交至伺服器: %s，用戶: %s", stratum.url, pool->user);
+    // Added detailed log of submitted server address
+    //applog(LOG_NOTICE, "[DEBUG] Submitting to server: %s，user: %s", stratum.url, pool->user);
 
-    // 重試提交機制
+    // Retry submission mechanism
     int max_retries = 3;
     int retry_delay = 2;
     for (int attempt = 0; attempt < max_retries; ++attempt) {
         if (stratum_send_line(&stratum, s)) {
-            // 成功提交，退出重試循環
+            // Submit successfully and exit the retry loop
             stratum.sharediff = work->sharediff[idnonce];
             stratum.job.shares_count++;
             return true;
         }
-        applog(LOG_WARNING, "[DEBUG] 提交失敗，重試 #%d ...", attempt + 1);
+        //applog(LOG_WARNING, "[DEBUG] Submission failed，Try again #%d ...", attempt + 1);
         sleep(retry_delay);
     }
 
-    applog(LOG_ERR, "[DEBUG] %s stratum_send_line 多次失敗後無法提交", __func__);
+    applog(LOG_ERR, "[DEBUG] %s stratum_send_line Unable to submit after multiple failures", __func__);
     return false;
 }
 
