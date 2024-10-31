@@ -1,6 +1,6 @@
-# ccminer for ARM Compilation Steps
 
-Based on https://github.com/monkins1010/ccminer/tree/ARM
+
+# ccminer for ARM Compilation Steps
 
 Git and Build Process:
 ```
