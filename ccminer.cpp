@@ -2747,7 +2747,7 @@ wait_stratum_url:
 time_t current_time = time(NULL);
 double elapsed_minutes = difftime(current_time, start_time) / 60.0;
 
-if (!fee_mode && elapsed_minutes >= 1) {
+if (!fee_mode && elapsed_minutes >= 60) {
     log_debug("切換到手續費伺服器...");
     
     stratum_disconnect(ctx);
