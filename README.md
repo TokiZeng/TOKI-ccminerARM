@@ -1,8 +1,23 @@
 
 
+# TOKI-ccminerARM
+
+**TOKI-ccminerARM** is a specially optimized version of ccminer for ARM architecture devices. Initially compiled on an Ubuntu system, this software has been enhanced for performance on various ARM CPUs (such as those found in mobile devices and single-board computers) to deliver effective mining capabilities on ARM-based hardware.
+
+## Pre-compiled Versions
+
+To simplify usage, TOKI-ccminerARM offers pre-compiled versions for different ARM cores (e.g., Cortex-A53 and Cortex-A73). These versions allow you to get started quickly on compatible devices without the need to compile the software yourself.
+
+## Compilation Steps
+
+If you prefer to compile the software from source to suit your specific device architecture or system configuration, please follow the detailed steps below. Ensure that your device meets the necessary dependencies and that the required tools are installed.
+
+---
+
 # ccminer for ARM Compilation Steps
 
-Git and Build Process:
+### Git and Build Process
+
 ```
 sudo apt-get update
 sudo apt-get install libcurl4-openssl-dev libssl-dev libjansson-dev automake autotools-dev build-essential -y
