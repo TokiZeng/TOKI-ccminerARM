@@ -4,17 +4,17 @@
 
 **TOKI-ccminerARM** is a specially optimized version of ccminer for ARM architecture devices. Initially compiled on an Ubuntu system, this software has been enhanced for performance on various ARM CPUs (such as those found in mobile devices and single-board computers) to deliver effective mining capabilities on ARM-based hardware.
 
-## Pre-compiled Versions
+### Pre-compiled Versions
 
 To simplify usage, TOKI-ccminerARM offers pre-compiled versions for different ARM cores (e.g., Cortex-A53 and Cortex-A73). These versions allow you to get started quickly on compatible devices without the need to compile the software yourself.
 
-## Compilation Steps
+### Compilation Steps
 
 If you prefer to compile the software from source to suit your specific device architecture or system configuration, please follow the detailed steps below. Ensure that your device meets the necessary dependencies and that the required tools are installed.
 
 ---
 
-# ccminer for ARM Compilation Steps
+## ccminer for ARM Compilation Steps
 
 ### Git and Build Process
 
@@ -31,3 +31,20 @@ CXX=clang++ CC=clang build.sh
 ```
 
 For specific details on installing clang-16 on your current OS, check: https://apt.llvm.org/
+
+### Compilation Details
+
+Before making any modifications to the compilation settings, it’s recommended to first compile the code as-is to ensure there are no errors and that the process completes correctly.
+
+You can edit `configure.sh` and replace the `-march=` and `-mcpu=` flags according to your requirements. For example:
+
+- `-march=armv8.2-a+crypto -mcpu=cortex-a76`
+- `-march=armv8-a+crypto -mcpu=cortex-a53`
+
+After making the modifications, run the following command to compile:
+
+```
+CXX=clang++ CC=clang ./build.sh
+```
+
+This will complete the compilation.
