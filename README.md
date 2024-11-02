@@ -45,6 +45,11 @@ After making the modifications, run the following command to compile:
 
 ```
 
+CXX=clang++ CC=clang ./build.sh
+```
+
+This will complete the compilation.
+
 # UserLAnd Installation Guide
 
 ## Introduction
@@ -98,7 +103,4 @@ This is a simple method to install Ubuntu on an Android device. By using the **U
 
 After completing these steps, you’ll be able to use UserLAnd on your phone to install and use Ubuntu or other Linux systems. The first method is ideal for downloading and installing directly from your phone, while the second method is convenient for installing remotely through ADB after downloading on a computer.
 
-CXX=clang++ CC=clang ./build.sh
-```
 
-This will complete the compilation.
