@@ -44,6 +44,60 @@ You can edit `configure.sh` and replace the `-march=` and `-mcpu=` flags accordi
 After making the modifications, run the following command to compile:
 
 ```
+
+# UserLAnd Installation Guide
+
+## Introduction
+This is a simple method to install Ubuntu on an Android device. By using the **UserLAnd** app, you can easily set up a full Linux environment without modifying the native Android system. UserLAnd supports multiple Linux distributions (including Ubuntu and Debian) and allows access through SSH or VNC. Another straightforward way to install UserLAnd is via **Google Play**, which is more intuitive, so it won’t be explained here. Below are two alternative methods for installing UserLAnd: one directly on the phone and another using ADB from a computer.
+
+---
+
+## Method 1: Direct Installation on the Phone
+
+1. **Download the APK file**:
+   - Use your phone's browser to visit the [UserLAnd GitHub Releases page](https://github.com/CypherpunkArmory/UserLAnd/releases).
+   - Find the latest version of **app-release.apk**, then download it to the phone's Downloads folder.
+
+2. **Allow installation from unknown sources**:
+   - If you haven't enabled the installation of apps from unknown sources, go to **Settings** > **Security** > **Unknown Sources** or **App Management** > **Special App Access** > **Install Unknown Apps**.
+   - Enable this setting for your browser or file manager.
+
+3. **Install the APK file**:
+   - Open a file manager and navigate to the **Downloads** folder, then locate **app-release.apk**.
+   - Tap the APK file and select **Install**.
+   - Once installation is complete, you can find and open UserLAnd in your app list.
+
+---
+
+## Method 2: Installing via ADB from a Computer
+
+1. **Download the APK file**:
+   - Use your computer’s browser to visit the [UserLAnd GitHub Releases page](https://github.com/CypherpunkArmory/UserLAnd/releases).
+   - Find the latest version of **app-release.apk**, then download it and save it to your computer.
+
+2. **Enable USB debugging**:
+   - On your phone, go to **Settings > About phone** and tap on **Build Number** 7 times to enable **Developer Options**.
+   - Go back to **Settings**, open **Developer Options**, and enable **USB Debugging**.
+
+3. **Connect the phone and install the APK**:
+   - Use a USB cable to connect your phone to the computer.
+   - Open a Command Prompt or Terminal window and enter the following command to confirm the device connection:
+     ```bash
+     adb devices
+     ```
+   - If your device’s serial number appears, the connection is successful.
+
+4. **Install the APK file**:
+   - Run the following command to install the APK file on the phone (replace `/path/to/app-release.apk` with the actual path to the APK file):
+     ```bash
+     adb install /path/to/app-release.apk
+     ```
+   - Once the installation is complete, you will find UserLAnd in your app list.
+
+---
+
+After completing these steps, you’ll be able to use UserLAnd on your phone to install and use Ubuntu or other Linux systems. The first method is ideal for downloading and installing directly from your phone, while the second method is convenient for installing remotely through ADB after downloading on a computer.
+
 CXX=clang++ CC=clang ./build.sh
 ```
 
