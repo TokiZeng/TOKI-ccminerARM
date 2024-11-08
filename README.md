@@ -2,6 +2,8 @@
 
 # TOKI-ccminerARM
 
+Mining software designed specifically for mining Verus on ARM.
+
 This version is an extended modification of Oink70's work: https://github.com/Oink70/CCminer-ARM-optimized.
 
 If the original version runs perfectly on your device, you can simply replace the ccminer file. Download the appropriate core version from Releases, extract it, and overwrite the original file.
