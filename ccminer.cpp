@@ -2447,22 +2447,40 @@ static void *miner_thread(void *userdata)
 
 		/* ignore first loop hashrate */
 		if (firstwork_time && thr_id == (opt_n_threads - 1)) {
-			double hashrate = 0.;
+
 			pthread_mutex_lock(&stats_lock);
-			for (int i = 0; i < opt_n_threads && thr_hashrates[i]; i++)
-				hashrate += stats_get_speed(i, thr_hashrates[i]);
+
+			double temp_speeds[MAX_THREADS] __attribute__((aligned(64)));
+			int valid_threads = 0;
+
+			#pragma clang loop unroll(enable) vectorize_width(4)
+			for (int i = 0; i < MAX_THREADS; i++) {
+				if (i < opt_n_threads && thr_hashrates[i] > 0) {
+					temp_speeds[valid_threads++] = thr_hashrates[i];
+				}
+			}
+
 			pthread_mutex_unlock(&stats_lock);
+
+			double temp_hashrate = 0.0;
+
+			// 向量化和展開累加操作
+			#pragma clang loop vectorize_width(4) interleave(enable) unroll(enable)
+			for (int i = 0; i < valid_threads; i++) {
+				temp_hashrate += temp_speeds[i];
+			}
+
+			global_hashrate = llround(temp_hashrate);
+
 			if (opt_benchmark && bench_algo == -1 && loopcnt > 2) {
-				format_hashrate(hashrate, s);
+				format_hashrate(global_hashrate, s);
 				applog(LOG_NOTICE, "Total: %s", s);
 			}
 
-			// since pool start
-			pools[cur_pooln].work_time = (uint32_t) (time(NULL) - firstwork_time);
-
-			// X-Mining-Hashrate
-			global_hashrate = llround(hashrate);
+			pools[cur_pooln].work_time = (uint32_t)(time(NULL) - firstwork_time);
 		}
+
+
 
 		if (firstwork_time == 0)
 			firstwork_time = time(NULL);

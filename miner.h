@@ -28,6 +28,10 @@ extern "C" {
 # endif
 #endif
 
+#ifndef MAX_THREADS
+#define MAX_THREADS 8
+#endif
+
 #ifdef HAVE_ALLOCA_H
 # include <alloca.h>
 #elif !defined alloca
