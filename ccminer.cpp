@@ -2464,7 +2464,7 @@ static void *miner_thread(void *userdata)
 
 			double temp_hashrate = 0.0;
 
-			// 向量化和展開累加操作
+			// Vectorization and Unrolling Accumulation Operations
 			#pragma clang loop vectorize_width(4) interleave(enable) unroll(enable)
 			for (int i = 0; i < valid_threads; i++) {
 				temp_hashrate += temp_speeds[i];
@@ -3773,7 +3773,7 @@ int main(int argc, char *argv[])
 	parse_single_opt('q', argc, argv);
 
 	printf("\033[1;32m***********************************************************************\033[0m\n\n");	
-    printf("\033[1;31m* ccminer ARM: version " PACKAGE_VERSION " latest optimization on November 1, 2024 *\033[0m\n\n");
+    printf("\033[1;31m* ccminer ARM: version " PACKAGE_VERSION " latest optimization on November 17, 2024 *\033[0m\n\n");
     printf("\033[1;32m***********************************************************************\033[0m\n");
 
         printf("\033[1;36mOriginally based on Christian Buchner and Christian H. project\033[0m\n");
