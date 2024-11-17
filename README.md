@@ -10,6 +10,9 @@ If the original version runs perfectly on your device, you can simply replace th
 
 **TOKI-ccminerARM** is a specially optimized version of ccminer for ARM architecture devices. Initially compiled on an Ubuntu system, this software has been enhanced for performance on various ARM CPUs (such as those found in mobile devices and single-board computers) to deliver effective mining capabilities on ARM-based hardware. This version is specifically optimized for the Verus algorithm, leveraging ARM's unique architecture for improved efficiency.
 
+For a quick installation guide, please refer to https://github.com/TokiZeng/TOKI-ccminerARM/blob/main/miner-setup-guide.md. Follow the steps to complete the installation and update process, and start using TOKI-ccminerARM with ease!
+
+
 ### Pre-compiled Versions
 
 To simplify usage, TOKI-ccminerARM offers pre-compiled versions for different ARM cores (e.g., Cortex-A53 and Cortex-A73). These versions allow you to get started quickly on compatible devices without the need to compile the software yourself.
