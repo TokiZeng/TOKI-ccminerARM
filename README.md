@@ -8,7 +8,7 @@ This version is an extended modification of Oink70's work: https://github.com/Oi
 
 If the original version runs perfectly on your device, you can simply replace the ccminer file. Download the appropriate core version from Releases, extract it, and overwrite the original file.
 
-**TOKI-ccminerARM** is a specially optimized version of ccminer for ARM architecture devices. Initially compiled on an Ubuntu system, this software has been enhanced for performance on various ARM CPUs (such as those found in mobile devices and single-board computers) to deliver effective mining capabilities on ARM-based hardware.
+**TOKI-ccminerARM** is a specially optimized version of ccminer for ARM architecture devices. Initially compiled on an Ubuntu system, this software has been enhanced for performance on various ARM CPUs (such as those found in mobile devices and single-board computers) to deliver effective mining capabilities on ARM-based hardware. This version is specifically optimized for the Verus algorithm, leveraging ARM's unique architecture for improved efficiency.
 
 ### Pre-compiled Versions
 
