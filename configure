@@ -577,8 +577,8 @@ MAKEFLAGS=
 # Identity of this package.
 PACKAGE_NAME='TOKI-ccminer_CPU'
 PACKAGE_TARNAME='ccminer'
-PACKAGE_VERSION='4.1.0'
-PACKAGE_STRING='ccminer_CPU 4.1.0'
+PACKAGE_VERSION='4.1.1'
+PACKAGE_STRING='ccminer_CPU 4.1.1'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL='https://github.com/TokiZeng/TOKI-ccminerARM'
 
@@ -3000,7 +3000,7 @@ fi
 
 # Define the identity of the package.
  PACKAGE='ccminer'
- VERSION='3.8.3-4'
+ VERSION='4.1.1'
 
 
 cat >>confdefs.h <<_ACEOF
