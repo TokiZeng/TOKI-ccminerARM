@@ -14,6 +14,9 @@ https://github.com/TokiZeng/TOKI-ccminerARM/releases/download/latest/miner-setup
 
 ### Installation Process
 ```
+sudo apt update
+```
+```
 sudo apt install wget
 ```
 ```
