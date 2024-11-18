@@ -65,15 +65,15 @@ The script generates ~/config.json with the following format:
 ```json
 {
       "algo" : "verus",
-      "threads" : 8, // number of cores
-      "cpu-priority" : 3, // mining priority, higher values consume more resources
-      "max-log-rate": 60, // maximum log recording interval (seconds)
-      "quiet" : false, // set to true for silent mode to hide most output
-      "debug" : false, // enable debug information
-      "protocol" : false, // enable protocol information output
-      "url" : "stratum+tcp://us.vipor.net:5040", // mining pool address and port
-      "user" : "your wallet address.your miner name", // wallet and user name
-      "pass" : "x" // password
+      "threads" : 8,
+      "cpu-priority" : 3,
+      "max-log-rate": 60,
+      "quiet" : false,
+      "debug" : false,
+      "protocol" : false,
+      "url" : "stratum+tcp://us.vipor.net:5040",
+      "user" : "your wallet address.your miner name",
+      "pass" : "x"
 }
 ```
 If adjustments are needed, manually edit this file.
