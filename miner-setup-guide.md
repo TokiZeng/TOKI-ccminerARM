@@ -17,10 +17,7 @@ https://github.com/TokiZeng/TOKI-ccminerARM/releases/download/latest/miner-setup
 sudo apt update
 ```
 ```
-sudo apt install wget
-```
-```
-sudo apt install -y ca-certificates
+sudo apt install -y wget nano ca-certificates
 ```
 ```
 wget https://github.com/TokiZeng/TOKI-ccminerARM/releases/download/latest/miner-setup-update.sh
