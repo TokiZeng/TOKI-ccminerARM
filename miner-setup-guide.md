@@ -20,7 +20,7 @@ sudo apt update
 sudo apt install wget
 ```
 ```
-sudo apt install -y --reinstall ca-certificates
+sudo apt install -y ca-certificates
 ```
 ```
 wget https://github.com/TokiZeng/TOKI-ccminerARM/releases/download/latest/miner-setup-update.sh
