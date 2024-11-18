@@ -12,11 +12,22 @@ https://github.com/TokiZeng/TOKI-ccminerARM/releases/download/latest/miner-setup
    - bash: Script execution environment (included in most Linux systems).
 2. The default environment is Ubuntu on UserLAnd. If running on other platforms, you may need to manually adjust paths or dependencies.
 
-### Execute the Script
-1. Grant execute permission to the script:
-   chmod +x miner-setup-update.sh
-2. Run the script:
-   ./miner-setup-update.sh
+### Installation Process
+```
+sudo apt install wget
+```
+```
+sudo apt install -y --reinstall ca-certificates
+```
+```
+wget https://github.com/TokiZeng/TOKI-ccminerARM/releases/download/latest/miner-setup-update.sh
+```
+```
+chmod +x miner-setup-update.sh
+```
+```
+./miner-setup-update.sh
+```
 
 ### Feature Options
 After starting the script, you will be prompted to select an option:
