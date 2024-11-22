@@ -577,8 +577,8 @@ MAKEFLAGS=
 # Identity of this package.
 PACKAGE_NAME='TOKI-ccminer_CPU'
 PACKAGE_TARNAME='ccminer'
-PACKAGE_VERSION='4.1.1'
-PACKAGE_STRING='ccminer_CPU 4.1.1'
+PACKAGE_VERSION='4.1.2'
+PACKAGE_STRING='ccminer_CPU 4.1.2'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL='https://github.com/TokiZeng/TOKI-ccminerARM'
 
