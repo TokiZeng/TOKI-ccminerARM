@@ -1,6 +1,6 @@
 
 
-# TOKI-ccminerARM
+# TOKI-ccminerARM  #verus coin
 
 Mining software designed specifically for mining Verus on ARM.
 
