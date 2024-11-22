@@ -5,8 +5,9 @@ Plain C implementation of the Haraka256 and Haraka512 permutations.
 #include <string.h>
 #include <stdlib.h>
 
-#include "haraka_portable.h"
 
+#include "haraka_portable.h"
+#include <arm_neon.h>
 #define HARAKAS_RATE 32
 
 static const unsigned char haraka_rc[40][16] = {
@@ -81,85 +82,54 @@ static const unsigned char sbox[256] =
 #define XT(x) (((x) << 1) ^ ((((x) >> 7) & 1) * 0x1b))
 
 // Simulate _mm_aesenc_si128 instructions from AESNI
-void aesenc(unsigned char *s, const unsigned char *rk) 
-{
 
-  uint8x16_t tmp1, tmp2, tmp3;
-// uint8_t s[16] = { i[0], i[1], i[2], i[3], i[4], i[5], i[6], i[7],
-//                   i[8], i[9], i[10], i[11], i[12], i[13], i[14], i[15] };
 
- tmp1 =  vld1q_u8(s);
- tmp2 = vld1q_u8(rk);
+void aesenc(unsigned char *s, const unsigned char *rk) {
 
-// tmp3 = vaesmcq_u8(vaeseq_u8(tmp1, (uint8x16_t){})) ^ tmp2;
-   tmp3 = _mm_aesenc_si128(tmp1, tmp2);
-  
-  //((uint64_t*)&s[0])[0] = (uint64_t)vgetq_lane_u64(tmp3,0);
-  //((uint64_t*)&s[0])[1] = (uint64_t)vgetq_lane_u64(tmp3,1);
-  ((uint8x16_t *)&s[0])[0] = tmp3;
-  
+    uint8x16_t state = vld1q_u8(s);
+    uint8x16_t round_key = vld1q_u8(rk);
 
-  /*  unsigned char i, t, u, v[4][4];
-#pragma clang unroll(full)
-    for (i = 0; i < 16; ++i) {
-        v[((i / 4) + 4 - (i%4) ) % 4][i % 4] = sbox[s[i]];
-    }
-#pragma clang unroll(full)
-    for (i = 0; i < 4; ++i) {
-        t = v[i][0];
-        u = v[i][0] ^ v[i][1] ^ v[i][2] ^ v[i][3];
-        v[i][0] ^= u ^ XT(v[i][0] ^ v[i][1]);
-        v[i][1] ^= u ^ XT(v[i][1] ^ v[i][2]);
-        v[i][2] ^= u ^ XT(v[i][2] ^ v[i][3]);
-        v[i][3] ^= u ^ XT(v[i][3] ^ t);
-    }
-#pragma clang unroll(full)
-    for (i = 0; i < 16; ++i) {
-        s[i] = v[i / 4][i % 4] ^ rk[i];
-    } */
+
+    state = vaeseq_u8(state, vdupq_n_u8(0));  // AES SubBytes  ShiftRows
+    state = vaesmcq_u8(state);                // AES MixColumns
+    state = veorq_u8(state, round_key);       // AddRoundKey
+
+   
+    vst1q_u8(s, state);
 }
 
-// Simulate _mm_unpacklo_epi32
-//void unpacklo32(unsigned char *t, unsigned char *a, unsigned char *b) 
-//{
-//    unsigned char tmp[16];
-//    memcpy(tmp, a, 4);
-//    memcpy(tmp + 4, b, 4);
-//    memcpy(tmp + 8, a + 4, 4);
-//    memcpy(tmp + 12, b + 4, 4);
-//    memcpy(t, tmp, 16);
-//}
-
-inline void unpacklo32_test(unsigned char *t, unsigned char *a, unsigned char *b) 
+inline void unpackhi32_test(unsigned char *t, const unsigned char *a, const unsigned char *b) 
 {
-	//uint8x16_t tmp1;
-	((uint8x16_t *)&t[0])[0] = _mm_unpacklo_epi32(vld1q_u8(a), vld1q_u8(b));
-	//((uint8x16_t *)&t[0])[0] = tmp1;
-	//((uint64_t*)&t[0])[0] = vgetq_lane_u64(tmp1,0);
-	//((uint64_t*)&t[0])[1] = vgetq_lane_u64(tmp1,1);
+    
+    uint8x16_t vec_a = vld1q_u8(a);
+    uint8x16_t vec_b = vld1q_u8(b);
+
+    
+    uint32x4_t high_a = vreinterpretq_u32_u8(vec_a); 
+    uint32x4_t high_b = vreinterpretq_u32_u8(vec_b); 
+
+    
+    uint32x4x2_t result = vzipq_u32(high_a, high_b);
+
+    
+    vst1q_u8(t, vreinterpretq_u8_u32(result.val[1])); 
 }
 
-
-
-// Simulate _mm_unpackhi_epi32
-//void unpackhi32(unsigned char *t, unsigned char *a, unsigned char *b) 
-//{
-//    unsigned char tmp[16];
-//    memcpy(tmp, a + 8, 4);
-//    memcpy(tmp + 4, b + 8, 4);
-//    memcpy(tmp + 8, a + 12, 4);
-//    memcpy(tmp + 12, b + 12, 4);
-//    memcpy(t, tmp, 16);
-//}
-
-inline void unpackhi32_test(unsigned char *t, unsigned char *a, unsigned char *b) 
+inline void unpacklo32_test(unsigned char *t, const unsigned char *a, const unsigned char *b) 
 {
-	//uint8x16_t tmp1;
-	((uint8x16_t*)&t[0])[0] = _mm_unpackhi_epi32(vld1q_u8(a), vld1q_u8(b));
-	//((uint64_t*)&t[0])[0] = vgetq_lane_u64(tmp1,0);
-	//((uint64_t*)&t[0])[1] = vgetq_lane_u64(tmp1,1);
-	//((uint8x16_t*)&t[0])[0] = tmp1;
+    
+    uint8x16_t vec_a = vld1q_u8(a);
+    uint8x16_t vec_b = vld1q_u8(b);
 
+    
+    uint32x4_t int_a = vreinterpretq_u32_u8(vec_a);
+    uint32x4_t int_b = vreinterpretq_u32_u8(vec_b);
+
+    
+    uint32x4x2_t result = vzipq_u32(int_a, int_b);
+
+    
+    vst1q_u8(t, vreinterpretq_u8_u32(result.val[0]));
 }
 
 void load_constants_port()
@@ -174,17 +144,30 @@ void tweak_constants(const unsigned char *pk_seed, const unsigned char *sk_seed,
     unsigned char buf[40*16];
 
     /* Use the standard constants to generate tweaked ones. */
-    memcpy(rc, haraka_rc, 40*16);
+    for (int i = 0; i < 40; i++) {
+        uint8x16_t temp = vld1q_u8(&haraka_rc[i][0]); 
+        vst1q_u8(&rc[i][0], temp);                   
+    }
 
     /* Constants for sk.seed */
     if (sk_seed != NULL) {
         haraka_S(buf, 40*16, sk_seed, seed_length);
-        memcpy(rc_sseed, buf, 40*16);
+
+        
+        for (int i = 0; i < 40; i++) {
+            uint8x16_t temp = vld1q_u8(&buf[i * 16]); 
+            vst1q_u8(&rc_sseed[i][0], temp);         
+        }
     }
 
     /* Constants for pk.seed */
     haraka_S(buf, 40*16, pk_seed, seed_length);
-    memcpy(rc, buf, 40*16);    
+
+    
+    for (int i = 0; i < 40; i++) {
+        uint8x16_t temp = vld1q_u8(&buf[i * 16]); 
+        vst1q_u8(&rc[i][0], temp);               
+    }
 }
 
 static void haraka_S_absorb(unsigned char *s, 
@@ -195,29 +178,46 @@ static void haraka_S_absorb(unsigned char *s,
 
     unsigned char t[32];
 
-
-
+    
     while (mlen >= 32) {
-        // XOR block to state
-        for (i = 0; i < 32; ++i) {
-            s[i] ^= m[i];
-        }
-        haraka512_perm(s, s);
+        uint8x16_t s1 = vld1q_u8(s);        
+        uint8x16_t m1 = vld1q_u8(m);        
+        vst1q_u8(s, veorq_u8(s1, m1));      
+
+        uint8x16_t s2 = vld1q_u8(s + 16);   
+        uint8x16_t m2 = vld1q_u8(m + 16);   
+        vst1q_u8(s + 16, veorq_u8(s2, m2)); 
+
+        haraka512_perm(s, s);               
         mlen -= 32;
         m += 32;
     }
 
-    for (i = 0; i < 32; ++i) {
-        t[i] = 0;
+
+    uint8x16_t zero = vdupq_n_u8(0);
+    vst1q_u8(t, zero);
+    vst1q_u8(t + 16, zero);
+
+    
+    for (i = 0; i + 16 <= mlen; i += 16) {
+        uint8x16_t temp = vld1q_u8(m + i);
+        vst1q_u8(t + i, temp);
     }
-    for (i = 0; i < mlen; ++i) {
+    for (; i < mlen; i++) {
         t[i] = m[i];
     }
-    t[i] = p;
+
+    t[mlen] = p; 
     t[32 - 1] |= 128;
-    for (i = 0; i < 32; ++i) {
-        s[i] ^= t[i];
-    }
+
+    
+    uint8x16_t s1 = vld1q_u8(s);
+    uint8x16_t t1 = vld1q_u8(t);
+    vst1q_u8(s, veorq_u8(s1, t1));
+
+    uint8x16_t s2 = vld1q_u8(s + 16);
+    uint8x16_t t2 = vld1q_u8(t + 16);
+    vst1q_u8(s + 16, veorq_u8(s2, t2));
 }
 
 static void haraka_S_squeezeblocks(unsigned char *h, unsigned long long nblocks,
@@ -225,7 +225,16 @@ static void haraka_S_squeezeblocks(unsigned char *h, unsigned long long nblocks,
 {
     while (nblocks > 0) {
         haraka512_perm(s, s);
-        memcpy(h, s, HARAKAS_RATE);
+
+        
+        uint8x16_t s1 = vld1q_u8(s); 
+        vst1q_u8(h, s1); 
+
+#if HARAKAS_RATE > 16
+        uint8x16_t s2 = vld1q_u8(s + 16); 
+        vst1q_u8(h + 16, s2); 
+#endif
+
         h += r;
         nblocks--;
     }
@@ -239,50 +248,71 @@ void haraka_S(unsigned char *out, unsigned long long outlen,
     unsigned char s[64];
     unsigned char d[32];
 
-    for (i = 0; i < 64; i++) {
-        s[i] = 0;
-    }
+    
+    uint8x16_t zero = vdupq_n_u8(0);
+    vst1q_u8(s, zero);
+    vst1q_u8(s + 16, zero);
+    vst1q_u8(s + 32, zero);
+    vst1q_u8(s + 48, zero);
+
+    
     haraka_S_absorb(s, in, inlen, 0x1F);
 
+    
     haraka_S_squeezeblocks(out, outlen / 32, s, 32);
     out += (outlen / 32) * 32;
 
+    
     if (outlen % 32) {
         haraka_S_squeezeblocks(d, 1, s, 32);
-        for (i = 0; i < outlen % 32; i++) {
-            out[i] = d[i];
+
+        
+        unsigned long long remaining = outlen % 32;
+
+        
+        if (remaining > 16) {
+            uint8x16_t d1 = vld1q_u8(d); 
+            vst1q_u8(out, d1); 
+            remaining -= 16;
+            out += 16;
+        }
+
+        
+        if (remaining > 0) {
+            uint8_t temp[16] = {0};
+            vst1q_u8(temp, vld1q_u8(d + 16)); 
+            for (i = 0; i < remaining; i++) {
+                out[i] = temp[i]; 
+            }
         }
     }
 }
 
 void mixing(unsigned char *a) {
+    uint8x16_t s0, s1, s2, s3;
 
-	uint8x16x4_t longstring;
-	uint8x16_t tmp;
-	
-	longstring.val[0] = vld1q_u8(a);
-	longstring.val[1] = vld1q_u8(a+16);
-	longstring.val[2] = vld1q_u8(a+32);
-	longstring.val[3] = vld1q_u8(a+48);
-	tmp = _mm_unpacklo_epi32(longstring.val[0], longstring.val[1]);        	/* unpacklo32_test(tmp, s, s+16 ) */
-	longstring.val[0] = _mm_unpackhi_epi32(longstring.val[0],longstring.val[1]);        /* unpackhi32_test(s , s, s+16 ) */
-	longstring.val[1] = _mm_unpacklo_epi32(longstring.val[2],longstring.val[3]);        /* unpacklo32_test(s + 16, s + 32, s +48 ) */
-	longstring.val[2] = _mm_unpackhi_epi32(longstring.val[2],longstring.val[3]);        /* unpackhi32_test(s + 32, s + 32, s +48 ) */
-	longstring.val[3] = _mm_unpacklo_epi32(longstring.val[0],longstring.val[2]);	/* unpacklo32_test(s + 48, s, s + 32 )     */
-	longstring.val[0] = _mm_unpackhi_epi32(longstring.val[0],longstring.val[2]);	/* unpackhi32_test(s, s, s + 32)	*/
-	longstring.val[2] = _mm_unpackhi_epi32(longstring.val[1],tmp);		/* unpackhi32_test( s + 32, s + 16, tmp ) */
-	longstring.val[1] = _mm_unpacklo_epi32(longstring.val[1],tmp);		/* unpacklo32_test( s + 16, s + 16, tmp ) */
+    // Load data into NEON registers
+    s0 = vld1q_u8(a);         // Load first 16 bytes
+    s1 = vld1q_u8(a + 16);    // Load second 16 bytes
+    s2 = vld1q_u8(a + 32);    // Load third 16 bytes
+    s3 = vld1q_u8(a + 48);    // Load fourth 16 bytes
 
-	((uint64_t*)&a[0])[0] = vgetq_lane_u64(longstring.val[0],0);
-	((uint64_t*)&a[0])[1] = vgetq_lane_u64(longstring.val[0],1);
-	((uint64_t*)&a[0])[2] = vgetq_lane_u64(longstring.val[1],0);
-	((uint64_t*)&a[0])[3] = vgetq_lane_u64(longstring.val[1],1);
-	((uint64_t*)&a[0])[4] = vgetq_lane_u64(longstring.val[2],0);
-	((uint64_t*)&a[0])[5] = vgetq_lane_u64(longstring.val[2],1);
-	((uint64_t*)&a[0])[6] = vgetq_lane_u64(longstring.val[3],0);
-	((uint64_t*)&a[0])[7] = vgetq_lane_u64(longstring.val[3],1);
-		
+    // Perform unpack and mixing operations
+    uint8x16_t tmp0 = vextq_u8(s0, s1, 8); // Rotate and mix
+    uint8x16_t tmp1 = vextq_u8(s2, s3, 8);
+
+    s0 = vcombine_u8(vget_low_u8(tmp0), vget_high_u8(tmp1)); // Combine parts
+    s1 = vcombine_u8(vget_high_u8(tmp0), vget_low_u8(tmp1));
+    s2 = vcombine_u8(vget_low_u8(s0), vget_high_u8(s1));
+    s3 = vcombine_u8(vget_high_u8(s0), vget_low_u8(s1));
+
+    // Store results back to memory
+    vst1q_u8(a, s0);
+    vst1q_u8(a + 16, s1);
+    vst1q_u8(a + 32, s2);
+    vst1q_u8(a + 48, s3);
 }
+
 
 void haraka512_perm(unsigned char *out, const unsigned char *in) 
 {
@@ -290,22 +320,28 @@ void haraka512_perm(unsigned char *out, const unsigned char *in)
 
     unsigned char s[64], tmp[16];
 
-    memcpy(s, in, 64);
-    //memcpy(s, in, 16);
-    //memcpy(s + 16, in + 16, 16);
-    //memcpy(s + 32, in + 32, 16);
-    //memcpy(s + 48, in + 48, 16);
+    
+    uint8x16_t vec0 = vld1q_u8(in); 
+    uint8x16_t vec1 = vld1q_u8(in + 16);
+    uint8x16_t vec2 = vld1q_u8(in + 32); 
+    uint8x16_t vec3 = vld1q_u8(in + 48); 
+
+    
+    vst1q_u8(s, vec0);
+    vst1q_u8(s + 16, vec1);
+    vst1q_u8(s + 32, vec2);
+    vst1q_u8(s + 48, vec3);
 
     for (i = 0; i < 5; ++i) {
-        // aes round(s)
+        // AES rounds
         for (j = 0; j < 2; ++j) {
-            aesenc(s, rc[4*2*i + 4*j]);
-            aesenc(s + 16, rc[4*2*i + 4*j + 1]);
-            aesenc(s + 32, rc[4*2*i + 4*j + 2]);
-            aesenc(s + 48, rc[4*2*i + 4*j + 3]);
+            aesenc(s, rc[4 * 2 * i + 4 * j]);
+            aesenc(s + 16, rc[4 * 2 * i + 4 * j + 1]);
+            aesenc(s + 32, rc[4 * 2 * i + 4 * j + 2]);
+            aesenc(s + 48, rc[4 * 2 * i + 4 * j + 3]);
         }
 
-        //mixing(s);  
+        // Mixing step
         unpacklo32_test(tmp, s, s + 16);
         unpackhi32_test(s, s, s + 16);
         unpacklo32_test(s + 16, s + 32, s + 48);
@@ -316,7 +352,16 @@ void haraka512_perm(unsigned char *out, const unsigned char *in)
         unpacklo32_test(s + 16, s + 16, tmp);
     }
 
-    memcpy(out, s, 64);
+
+    vec0 = vld1q_u8(s); 
+    vec1 = vld1q_u8(s + 16);
+    vec2 = vld1q_u8(s + 32); 
+    vec3 = vld1q_u8(s + 48); 
+
+    vst1q_u8(out, vec0); 
+    vst1q_u8(out + 16, vec1);
+    vst1q_u8(out + 32, vec2); 
+    vst1q_u8(out + 48, vec3);
 }
 
 
@@ -326,22 +371,27 @@ void haraka512_perm_keyed(unsigned char *out, const unsigned char *in, const __m
 
     unsigned char s[64], tmp[16];
 
-    memcpy(s, in, 64);
-    //memcpy(s, in, 16);
-    //memcpy(s + 16, in + 16, 16);
-    //memcpy(s + 32, in + 32, 16);
-    //memcpy(s + 48, in + 48, 16);
+   
+    uint8x16_t vec0 = vld1q_u8(in);     
+    uint8x16_t vec1 = vld1q_u8(in + 16); 
+    uint8x16_t vec2 = vld1q_u8(in + 32); 
+    uint8x16_t vec3 = vld1q_u8(in + 48);
+
+    vst1q_u8(s, vec0); 
+    vst1q_u8(s + 16, vec1); 
+    vst1q_u8(s + 32, vec2); 
+    vst1q_u8(s + 48, vec3); 
 
     for (i = 0; i < 5; ++i) {
         // aes round(s)
         for (j = 0; j < 2; ++j) {
-            aesenc(s, (const unsigned char *)&rc[4*2*i + 4*j]);
-            aesenc(s + 16, (const unsigned char *)&rc[4*2*i + 4*j + 1]);
-            aesenc(s + 32, (const unsigned char *)&rc[4*2*i + 4*j + 2]);
-            aesenc(s + 48, (const unsigned char *)&rc[4*2*i + 4*j + 3]);
+            aesenc(s, (const unsigned char *)&rc[4 * 2 * i + 4 * j]);
+            aesenc(s + 16, (const unsigned char *)&rc[4 * 2 * i + 4 * j + 1]);
+            aesenc(s + 32, (const unsigned char *)&rc[4 * 2 * i + 4 * j + 2]);
+            aesenc(s + 48, (const unsigned char *)&rc[4 * 2 * i + 4 * j + 3]);
         }
 
-        //mixing(s); 
+        // Mixing step
         unpacklo32_test(tmp, s, s + 16);
         unpackhi32_test(s, s, s + 16);
         unpacklo32_test(s + 16, s + 32, s + 48);
@@ -352,47 +402,89 @@ void haraka512_perm_keyed(unsigned char *out, const unsigned char *in, const __m
         unpacklo32_test(s + 16, s + 16, tmp);
     }
 
-    memcpy(out, s, 64);
+   
+    vec0 = vld1q_u8(s); 
+    vec1 = vld1q_u8(s + 16);
+    vec2 = vld1q_u8(s + 32);
+    vec3 = vld1q_u8(s + 48);
+
+    vst1q_u8(out, vec0);
+    vst1q_u8(out + 16, vec1);
+    vst1q_u8(out + 32, vec2); 
+    vst1q_u8(out + 48, vec3);
 }
 
 void haraka512_port(unsigned char *out, const unsigned char *in)
 {
-    int i;
-
     unsigned char buf[64];
 
+   
     haraka512_perm(buf, in);
-    /* Feed-forward */
-#pragma clang unroll(full)
-    for (i = 0; i < 64; i++) {
-        buf[i] = buf[i] ^ in[i];
-    }
 
-    /* Truncated */
-    memcpy(out,      buf + 8, 8);
-    memcpy(out + 8,  buf + 24, 8);
-    memcpy(out + 16, buf + 32, 8);
-    memcpy(out + 24, buf + 48, 8);
+
+    uint8x16_t buf_vec0 = vld1q_u8(buf); 
+    uint8x16_t buf_vec1 = vld1q_u8(buf + 16);
+    uint8x16_t buf_vec2 = vld1q_u8(buf + 32); 
+    uint8x16_t buf_vec3 = vld1q_u8(buf + 48); 
+
+    uint8x16_t in_vec0 = vld1q_u8(in); 
+    uint8x16_t in_vec1 = vld1q_u8(in + 16);
+    uint8x16_t in_vec2 = vld1q_u8(in + 32); 
+    uint8x16_t in_vec3 = vld1q_u8(in + 48); 
+
+    buf_vec0 = veorq_u8(buf_vec0, in_vec0); 
+    buf_vec1 = veorq_u8(buf_vec1, in_vec1);
+    buf_vec2 = veorq_u8(buf_vec2, in_vec2);
+    buf_vec3 = veorq_u8(buf_vec3, in_vec3);
+
+    vst1q_u8(buf, buf_vec0);  
+    vst1q_u8(buf + 16, buf_vec1);
+    vst1q_u8(buf + 32, buf_vec2);
+    vst1q_u8(buf + 48, buf_vec3);
+
+    
+    uint8x16_t out_vec0 = vcombine_u8(vld1_u8(buf + 8), vld1_u8(buf + 24)); 
+    uint8x16_t out_vec1 = vcombine_u8(vld1_u8(buf + 32), vld1_u8(buf + 48)); 
+
+    vst1q_u8(out, out_vec0); 
+    vst1q_u8(out + 16, out_vec1); 
 }
+
+
 
 void haraka512_port_keyed(unsigned char *out, const unsigned char *in, const __m128i *rc)
 {
-    int i;
-
     unsigned char buf[64];
 
     haraka512_perm_keyed(buf, in, rc);
-    /* Feed-forward */
-#pragma clang unroll(full);
-    for (i = 0; i < 64; i++) {
-        buf[i] = buf[i] ^ in[i];
-    }
 
-    /* Truncated */
-    memcpy(out,      buf + 8, 8);
-    memcpy(out + 8,  buf + 24, 8);
-    memcpy(out + 16, buf + 32, 8);
-    memcpy(out + 24, buf + 48, 8);
+    // Feed-forward
+    uint8x16_t buf_vec0 = vld1q_u8(buf);
+    uint8x16_t buf_vec1 = vld1q_u8(buf + 16);
+    uint8x16_t buf_vec2 = vld1q_u8(buf + 32);
+    uint8x16_t buf_vec3 = vld1q_u8(buf + 48);
+
+    uint8x16_t in_vec0 = vld1q_u8(in);
+    uint8x16_t in_vec1 = vld1q_u8(in + 16);
+    uint8x16_t in_vec2 = vld1q_u8(in + 32);
+    uint8x16_t in_vec3 = vld1q_u8(in + 48);
+
+    buf_vec0 = veorq_u8(buf_vec0, in_vec0);
+    buf_vec1 = veorq_u8(buf_vec1, in_vec1);
+    buf_vec2 = veorq_u8(buf_vec2, in_vec2);
+    buf_vec3 = veorq_u8(buf_vec3, in_vec3);
+
+    vst1q_u8(buf, buf_vec0);
+    vst1q_u8(buf + 16, buf_vec1);
+    vst1q_u8(buf + 32, buf_vec2);
+    vst1q_u8(buf + 48, buf_vec3);
+
+    
+    uint8x16_t out_vec0 = vcombine_u8(vld1_u8(buf + 8), vld1_u8(buf + 24)); // [8:15, 24:31]
+    uint8x16_t out_vec1 = vcombine_u8(vld1_u8(buf + 32), vld1_u8(buf + 48)); // [32:39, 48:55]
+
+    vst1q_u8(out, out_vec0); 
+    vst1q_u8(out + 16, out_vec1); 
 }
 
 void haraka512_perm_zero(unsigned char *out, const unsigned char *in) 
@@ -401,22 +493,28 @@ void haraka512_perm_zero(unsigned char *out, const unsigned char *in)
 
     unsigned char s[64], tmp[16];
 
-    memcpy(s, in, 64);
-    //memcpy(s, in, 16);
-    //memcpy(s + 16, in + 16, 16);
-    //memcpy(s + 32, in + 32, 16);
-    //memcpy(s + 48, in + 48, 16);
+    
+    uint8x16_t vec_s0 = vld1q_u8(in);
+    uint8x16_t vec_s1 = vld1q_u8(in + 16);
+    uint8x16_t vec_s2 = vld1q_u8(in + 32);
+    uint8x16_t vec_s3 = vld1q_u8(in + 48);
+
+    
+    vst1q_u8(s, vec_s0);
+    vst1q_u8(s + 16, vec_s1);
+    vst1q_u8(s + 32, vec_s2);
+    vst1q_u8(s + 48, vec_s3);
 
     for (i = 0; i < 5; ++i) {
-        // aes round(s)
+        // AES Rounds
         for (j = 0; j < 2; ++j) {
-            aesenc(s, rc0[4*2*i + 4*j]);
-            aesenc(s + 16, rc0[4*2*i + 4*j + 1]);
-            aesenc(s + 32, rc0[4*2*i + 4*j + 2]);
-            aesenc(s + 48, rc0[4*2*i + 4*j + 3]);
+            aesenc(s, rc0[4 * 2 * i + 4 * j]);
+            aesenc(s + 16, rc0[4 * 2 * i + 4 * j + 1]);
+            aesenc(s + 32, rc0[4 * 2 * i + 4 * j + 2]);
+            aesenc(s + 48, rc0[4 * 2 * i + 4 * j + 3]);
         }
 
-	// mixing(s);
+        
         unpacklo32_test(tmp, s, s + 16);
         unpackhi32_test(s, s, s + 16);
         unpacklo32_test(s + 16, s + 32, s + 48);
@@ -427,27 +525,51 @@ void haraka512_perm_zero(unsigned char *out, const unsigned char *in)
         unpacklo32_test(s + 16, s + 16, tmp);
     }
 
-    memcpy(out, s, 64);
+   
+    vst1q_u8(out, vld1q_u8(s));
+    vst1q_u8(out + 16, vld1q_u8(s + 16));
+    vst1q_u8(out + 32, vld1q_u8(s + 32));
+    vst1q_u8(out + 48, vld1q_u8(s + 48));
 }
+
+
 
 void haraka512_port_zero(unsigned char *out, const unsigned char *in)
 {
-    int i;
-
+    
     unsigned char buf[64];
 
+    
     haraka512_perm_zero(buf, in);
-    /* Feed-forward */
-    for (i = 0; i < 64; i++) {
-        buf[i] = buf[i] ^ in[i];
-    }
 
-    /* Truncated */
-    memcpy(out,      buf + 8, 8);
-    memcpy(out + 8,  buf + 24, 8);
-    memcpy(out + 16, buf + 32, 8);
-    memcpy(out + 24, buf + 48, 8);
+    
+    uint8x16_t buf_vec0 = vld1q_u8(buf); 
+    uint8x16_t buf_vec1 = vld1q_u8(buf + 16); 
+    uint8x16_t buf_vec2 = vld1q_u8(buf + 32);
+    uint8x16_t buf_vec3 = vld1q_u8(buf + 48);
+
+    uint8x16_t in_vec0 = vld1q_u8(in);      
+    uint8x16_t in_vec1 = vld1q_u8(in + 16); 
+    uint8x16_t in_vec2 = vld1q_u8(in + 32); 
+    uint8x16_t in_vec3 = vld1q_u8(in + 48); 
+
+    buf_vec0 = veorq_u8(buf_vec0, in_vec0); 
+    buf_vec1 = veorq_u8(buf_vec1, in_vec1);
+    buf_vec2 = veorq_u8(buf_vec2, in_vec2);
+    buf_vec3 = veorq_u8(buf_vec3, in_vec3);
+
+    vst1q_u8(buf, buf_vec0);                  
+    vst1q_u8(buf + 16, buf_vec1);
+    vst1q_u8(buf + 32, buf_vec2);
+    vst1q_u8(buf + 48, buf_vec3);
+
+   
+    vst1_u8(out, vld1_u8(buf + 8));          
+    vst1_u8(out + 8, vld1_u8(buf + 24));      
+    vst1_u8(out + 16, vld1_u8(buf + 32));      
+    vst1_u8(out + 24, vld1_u8(buf + 48));      
 }
+
 
 void haraka256_port(unsigned char *out, const unsigned char *in) 
 {
@@ -455,30 +577,37 @@ void haraka256_port(unsigned char *out, const unsigned char *in)
 
     unsigned char s[32], tmp[16];
 
-    memcpy(s, in, 32);
-    //memcpy(s, in, 16);
-    //memcpy(s + 16, in + 16, 16);
+    
+    uint8x16_t vec_s0 = vld1q_u8(in);
+    uint8x16_t vec_s1 = vld1q_u8(in + 16);
+
+
+    vst1q_u8(s, vec_s0);
+    vst1q_u8(s + 16, vec_s1);
 
 #pragma clang unroll(full)
 #pragma loop distribute(enable)
     for (i = 0; i < 5; ++i) {
         // aes round(s)
         for (j = 0; j < 2; ++j) {
-            aesenc(s, rc[2*2*i + 2*j]);
-            aesenc(s + 16, rc[2*2*i + 2*j + 1]);
+            aesenc(s, rc[2 * 2 * i + 2 * j]);
+            aesenc(s + 16, rc[2 * 2 * i + 2 * j + 1]);
         }
 
-        // mixing
+     
         unpacklo32_test(tmp, s, s + 16);
         unpackhi32_test(s + 16, s, s + 16);
-        memcpy(s, tmp, 16);
+      
+        vst1q_u8(s, vld1q_u8(tmp));
     }
 
-    /* Feed-forward */
-#pragma clang unroll(full)
-    for (i = 0; i < 32; i++) {
-        out[i] = in[i] ^ s[i];
-    }
+   
+    uint8x16_t vec_out0 = veorq_u8(vld1q_u8(in), vld1q_u8(s));  
+    uint8x16_t vec_out1 = veorq_u8(vld1q_u8(in + 16), vld1q_u8(s + 16));
+
+    
+    vst1q_u8(out, vec_out0);
+    vst1q_u8(out + 16, vec_out1);
 }
 
 void haraka256_sk(unsigned char *out, const unsigned char *in)
@@ -487,25 +616,33 @@ void haraka256_sk(unsigned char *out, const unsigned char *in)
 
     unsigned char s[32], tmp[16];
 
-    memcpy(s, in, 32);
-    //memcpy(s, in, 16);
-    //memcpy(s + 16, in + 16, 16);
+  
+    uint8x16_t vec_s0 = vld1q_u8(in);
+    uint8x16_t vec_s1 = vld1q_u8(in + 16);
+
+  
+    vst1q_u8(s, vec_s0);
+    vst1q_u8(s + 16, vec_s1);
 
     for (i = 0; i < 5; ++i) {
         // aes round(s)
         for (j = 0; j < 2; ++j) {
-            aesenc(s, rc_sseed[2*2*i + 2*j]);
-            aesenc(s + 16, rc_sseed[2*2*i + 2*j + 1]);
+            aesenc(s, rc_sseed[2 * 2 * i + 2 * j]);
+            aesenc(s + 16, rc_sseed[2 * 2 * i + 2 * j + 1]);
         }
 
-        // mixing
+      
         unpacklo32_test(tmp, s, s + 16);
         unpackhi32_test(s + 16, s, s + 16);
-        memcpy(s, tmp, 16);
+      
+        vst1q_u8(s, vld1q_u8(tmp));
     }
 
-    /* Feed-forward */
-    for (i = 0; i < 32; i++) {
-        out[i] = in[i] ^ s[i];
-    }
+
+    uint8x16_t vec_out0 = veorq_u8(vld1q_u8(in), vld1q_u8(s)); 
+    uint8x16_t vec_out1 = veorq_u8(vld1q_u8(in + 16), vld1q_u8(s + 16)); 
+
+
+    vst1q_u8(out, vec_out0);
+    vst1q_u8(out + 16, vec_out1);
 }

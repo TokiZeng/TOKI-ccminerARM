@@ -53,17 +53,18 @@ class CVerusHash
                 std::fill(curBuf + 32 + curPos, curBuf + 64, 0);
             }
         }
-        void ExtraHash(unsigned char hash[32]) { (*haraka512Function)(hash, curBuf); }
-
         void Finalize(unsigned char hash[32])
         {
+            uint8x16_t zero = vdupq_n_u8(0); 
             if (curPos)
             {
-                std::fill(curBuf + 32 + curPos, curBuf + 64, 0);
-                (*haraka512Function)(hash, curBuf);
+                
+                vst1q_u8(curBuf + 32 + curPos, zero);
+                vst1q_u8(curBuf + 48, zero);
             }
-            else
-                std::memcpy(hash, curBuf, 32);
+
+            
+            (*haraka512Function)(hash, curBuf);
         }
 
     private:
@@ -121,17 +122,26 @@ class CVerusHashV2
         template <typename T>
         inline void FillExtra(const T *_data)
         {
+            uint8x16_t vec;
             unsigned char *data = (unsigned char *)_data;
-            int pos = curPos;
-            int left = 32 - pos;
-            do
+
+            
+            if (sizeof(T) < 32)
             {
-                int len = left > sizeof(T) ? sizeof(T) : left;
-                std::memcpy(curBuf + 32 + pos, data, len);
-                pos += len;
-                left -= len;
-            } while (left > 0);
+                unsigned char temp[32] = {0};
+                std::memcpy(temp, data, sizeof(T));
+                vec = vld1q_u8(temp);
+            }
+            else
+            {
+                vec = vld1q_u8(data);
+            }
+
+            
+            vst1q_u8(curBuf + 32, vec);
+            vst1q_u8(curBuf + 48, vec);
         }
+
         inline void ExtraHash(unsigned char hash[32]) { (*haraka512Function)(hash, curBuf); }
         inline void ExtraHashKeyed(unsigned char hash[32], u128 *key) { (*haraka512KeyedFunction)(hash, curBuf, key); }
 
@@ -161,18 +171,22 @@ class CVerusHashV2
                 unsigned char *pkey = key + pdesc->keySizeInBytes;
                 unsigned char *psrc = seedBytes32;
                 for (int i = 0; i < n256blks; i++)
-                {
-                    (*haraka256Function)(pkey, psrc);
+                    {
+                        uint8x16_t data1 = vld1q_u8(psrc);
+                        uint8x16_t data2 = vld1q_u8(psrc + 16);
+                        (*haraka256Function)((unsigned char *)&data1, (unsigned char *)&data2);
+                        vst1q_u8(pkey, data1);
+                        vst1q_u8(pkey + 16, data2);
+                        psrc = pkey;
+                        pkey += 32;
+                    }
+                    if (nbytesExtra)
+                    {
+                        uint8x16_t buf = vdupq_n_u8(0);
+                        (*haraka256Function)((unsigned char *)&buf, psrc);
+                        vst1q_u8(pkey, buf); 
+                    }
 
-                    psrc = pkey;
-                    pkey += 32;
-                }
-                if (nbytesExtra)
-                {
-                    unsigned char buf[32];
-                    (*haraka256Function)(buf, psrc);
-                    memcpy(pkey, buf, nbytesExtra);
-                }
                 pdesc->seed = *((uint256 *)seedBytes32);
             }
             memcpy(key, key + pdesc->keySizeInBytes, pdesc->keySizeInBytes);
@@ -195,15 +209,20 @@ class CVerusHashV2
 		//	memcpy(curBuf, temp, 64);
             FillExtra((u128 *)curBuf);
 
+            
+            uint8x16_t hashKey1 = vld1q_u8((unsigned char *)curBuf);
+            uint8x16_t hashKey2 = vld1q_u8((unsigned char *)curBuf + 16);
+
             u128 *key = GenNewCLKey(curBuf);
 
             uint64_t intermediate = vclh(curBuf, key);
 
-            FillExtra(&intermediate);
+            
+            vst1q_u8((unsigned char *)&intermediate, hashKey1);
+            vst1q_u8((unsigned char *)&intermediate + 16, hashKey2);
 
-
-            // get the final hash with a mutated dynamic key for each hash result
             (*haraka512KeyedFunction)(hash, curBuf, key + IntermediateTo128Offset(intermediate));
+
 #ifdef VERUSHASHDEBUG
 			printf("[cpu]Final hash    : ");
 			for (int i = 0; i < 32; i++)
