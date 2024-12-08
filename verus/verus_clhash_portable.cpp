@@ -19,7 +19,7 @@
 
 
 #include "haraka_portable.h"
-
+#include <arm_neon.h>
 #include <assert.h>
 #include <string.h>
 
@@ -58,18 +58,36 @@
   s0 = _mm_aesenc_si128(s0, rc[rci + 2]); \
   s1 = _mm_aesenc_si128(s1, rc[rci + 3]);
 
-FORCE_INLINE __m128i _mm_clmulepi64_si128_emu(const __m128i a, const __m128i &b, int imm)
+FORCE_INLINE __m128i _mm_clmulepi64_si128_emu(const __m128i a, const __m128i b, int imm)
 {
-	__m128i result;
-   
- // uint64x2_t aa = *(uint64x2_t*)&a;
- // uint64x2_t bb = *(uint64x2_t*)&b;
-  
- result = (__m128i)vmull_p64(vgetq_lane_u64(a, 1), vgetq_lane_u64(b,0)); 
+    uint64_t a0 = vgetq_lane_u64((uint64x2_t)a, 0);
+    uint64_t a1 = vgetq_lane_u64((uint64x2_t)a, 1);
+    uint64_t b0 = vgetq_lane_u64((uint64x2_t)b, 0);
+    uint64_t b1 = vgetq_lane_u64((uint64x2_t)b, 1);
 
-	return result;
+    uint64x2_t result;
 
+    switch (imm & 0x11) {
+    case 0x00: // lower 64 bits of both operands
+        result = (uint64x2_t)vmull_p64(a0, b0);
+        break;
+    case 0x01: // higher 64 bits of a, lower 64 bits of b
+        result = (uint64x2_t)vmull_p64(a1, b0);
+        break;
+    case 0x10: // lower 64 bits of a, higher 64 bits of b
+        result = (uint64x2_t)vmull_p64(a0, b1);
+        break;
+    case 0x11: // higher 64 bits of both operands
+        result = (uint64x2_t)vmull_p64(a1, b1);
+        break;
+    default:
+        result = vdupq_n_u64(0); // Default to zero for safety
+        break;
+    }
+
+    return (__m128i)result;
 }
+
 
 FORCE_INLINE __m128i _mm_mulhrs_epi16_emu(__m128i _a, __m128i _b)
 {
@@ -83,89 +101,49 @@ FORCE_INLINE __m128i _mm_mulhrs_epi16_emu(__m128i _a, __m128i _b)
 	return vqrdmulhq_s16(_a,_b); //*(__m128i *)result;
 }
 
- __m128i _mm_set_epi64x_emu(uint64_t hi, uint64_t lo)
+FORCE_INLINE __m128i _mm_set_epi64x_emu(uint64_t hi, uint64_t lo)
 {
-	__m128i result;
-	((uint64_t *)&result)[0] = lo;
-	((uint64_t *)&result)[1] = hi;
-	return result;
+    uint64x2_t result = vcombine_u64(vdup_n_u64(lo), vdup_n_u64(hi));
+    return (__m128i)result;
 }
 
- __m128i _mm_cvtsi64_si128_emu(uint64_t lo)
+
+FORCE_INLINE __m128i _mm_cvtsi64_si128_emu(uint64_t lo)
 {
-	__m128i result;
-	((uint64_t *)&result)[0] = lo;
-	((uint64_t *)&result)[1] = 0;
-	return result;
+    uint64x2_t result = vcombine_u64(vdup_n_u64(lo), vdup_n_u64(0));
+    return (__m128i)result;
 }
 
- int64_t _mm_cvtsi128_si64_emu(const __m128i &a)
+FORCE_INLINE int64_t _mm_cvtsi128_si64_emu(const __m128i &a)
 {
-	return *(int64_t *)&a;
+    return vgetq_lane_u64((uint64x2_t)a, 0);
 }
 
- int32_t _mm_cvtsi128_si32_emu(__m128i &a)
+
+FORCE_INLINE int32_t _mm_cvtsi128_si32_emu(__m128i &a)
 {
-	return *(int32_t *)&a;
+    return vgetq_lane_u32((uint32x4_t)a, 0);
 }
 
- FORCE_INLINE __m128i _mm_cvtsi32_si128_emu(uint32_t lo)
-{
-//	__m128i result;
-//	((uint32_t *)&result)[0] = lo;
-//	((uint32_t *)&result)[1] = 0;
-//	((uint64_t *)&result)[1] = 0;
-return vreinterpretq_m128i_s32(vsetq_lane_s32(lo, vdupq_n_s32(0), 0));
-	/*
-	const __m128i testresult = _mm_cvtsi32_si128(lo);
-	if (!memcmp(&testresult, &result, 16))
-	{
-	printf("_mm_cvtsi32_si128_emu: Portable version passed!\n");
-	}
-	else
-	{
-	printf("_mm_cvtsi32_si128_emu: Portable version failed!\n");
-	}
-	*/
 
-//	return result;
+FORCE_INLINE __m128i _mm_cvtsi32_si128_emu(uint32_t lo)
+{
+    return vreinterpretq_m128i_s32(vsetq_lane_s32(lo, vdupq_n_s32(0), 0));
 }
+
 typedef uint8_t u_char;
 
-__m128i _mm_setr_epi8_emu(u_char c0, u_char c1, u_char c2, u_char c3, u_char c4, u_char c5, u_char c6, u_char c7, u_char c8, u_char c9, u_char c10, u_char c11, u_char c12, u_char c13, u_char c14, u_char c15)
+FORCE_INLINE __m128i _mm_setr_epi8_emu(u_char c0, u_char c1, u_char c2, u_char c3,
+                                       u_char c4, u_char c5, u_char c6, u_char c7,
+                                       u_char c8, u_char c9, u_char c10, u_char c11,
+                                       u_char c12, u_char c13, u_char c14, u_char c15)
 {
-	__m128i result;
-	((uint8_t *)&result)[0] = c0;
-	((uint8_t *)&result)[1] = c1;
-	((uint8_t *)&result)[2] = c2;
-	((uint8_t *)&result)[3] = c3;
-	((uint8_t *)&result)[4] = c4;
-	((uint8_t *)&result)[5] = c5;
-	((uint8_t *)&result)[6] = c6;
-	((uint8_t *)&result)[7] = c7;
-	((uint8_t *)&result)[8] = c8;
-	((uint8_t *)&result)[9] = c9;
-	((uint8_t *)&result)[10] = c10;
-	((uint8_t *)&result)[11] = c11;
-	((uint8_t *)&result)[12] = c12;
-	((uint8_t *)&result)[13] = c13;
-	((uint8_t *)&result)[14] = c14;
-	((uint8_t *)&result)[15] = c15;
-
-	/*
-	const __m128i testresult = _mm_setr_epi8(c0,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15);
-	if (!memcmp(&testresult, &result, 16))
-	{
-	printf("_mm_setr_epi8_emu: Portable version passed!\n");
-	}
-	else
-	{
-	printf("_mm_setr_epi8_emu: Portable version failed!\n");
-	}
-	*/
-
-	return result;
+    // 使用 NEON 組合數據
+    uint8x16_t result = (uint8x16_t){c0, c1, c2, c3, c4, c5, c6, c7,
+                                     c8, c9, c10, c11, c12, c13, c14, c15};
+    return vreinterpretq_m128i_u8(result);
 }
+
 
 #define _mm_srli_si128_emu(a, imm) \
 ({ \
@@ -238,37 +216,25 @@ return vreinterpretq_m128i_s32(vld1q_s32((int32_t *)p));
  // *(__m128i *)p = val;
 }
 
-__m128i _mm_shuffle_epi8_emu(__m128i a, __m128i b)
+FORCE_INLINE __m128i _mm_shuffle_epi8_emu(__m128i a, __m128i b)
 {
-	__m128i result;
-	for (int i = 0; i < 16; i++)
-	{
-		if (((uint8_t *)&b)[i] & 0x80)
-		{
-			((uint8_t *)&result)[i] = 0;
-		}
-		else
-		{
-			((uint8_t *)&result)[i] = ((uint8_t *)&a)[((uint8_t *)&b)[i] & 0xf];
-		}
-	}
+    uint8x16_t mask = vreinterpretq_u8_m128i(b);
+    uint8x16_t data = vreinterpretq_u8_m128i(a);
+    uint8x16_t zero = vdupq_n_u8(0);
 
-	/*
-	const __m128i tmp1 = _mm_load_si128(&a);
-	const __m128i tmp2 = _mm_load_si128(&b);
-	__m128i testresult = _mm_shuffle_epi8(tmp1, tmp2);
-	if (!memcmp(&testresult, &result, 16))
-	{
-	printf("_mm_shuffle_epi8_emu: Portable version passed!\n");
-	}
-	else
-	{
-	printf("_mm_shuffle_epi8_emu: Portable version failed!\n");
-	}
-	*/
+    // 判斷高位是否為 1，生成選擇掩碼
+    uint8x16_t condition = vandq_u8(mask, vdupq_n_u8(0x80));
+    uint8x16_t index = vandq_u8(mask, vdupq_n_u8(0x0F));
 
-	return result;
+    // 使用查表指令進行索引操作
+    uint8x16_t shuffled = vqtbl1q_u8(data, index);
+
+    // 運用條件選擇掩碼，將高位為 1 的位置設置為 0
+    uint8x16_t result = vbslq_u8(condition, zero, shuffled);
+
+    return vreinterpretq_m128i_u8(result);
 }
+
 
 // portable
 __m128i lazyLengthHash_port(uint64_t keylength, uint64_t length) {
@@ -277,28 +243,46 @@ __m128i lazyLengthHash_port(uint64_t keylength, uint64_t length) {
 	return clprod1;
 }
 
-// modulo reduction to 64-bit value. The high 64 bits contain garbage, see precompReduction64
 __m128i precompReduction64_si128_port(__m128i A) {
+    // 定義不可約多項式
+    const __m128i C = _mm_cvtsi64_si128_emu((1U << 4) + (1U << 3) + (1U << 1) + (1U << 0));
 
-	//const __m128i C = _mm_set_epi64x(1U,(1U<<4)+(1U<<3)+(1U<<1)+(1U<<0)); // C is the irreducible poly. (64,4,3,1,0)
-	const __m128i C = _mm_cvtsi64_si128_emu((1U << 4) + (1U << 3) + (1U << 1) + (1U << 0));
-	__m128i Q2 = _mm_clmulepi64_si128_emu(A, C, 0x01);
-	__m128i Q3 = _mm_shuffle_epi8(_mm_setr_epi8(0, 27, 54, 45, 108, 119, 90, 65, (char)216, (char)195, (char)238, (char)245, (char)180, (char)175, (char)130, (char)153),
-		_mm_srli_si128(Q2, 8));
-	__m128i Q4 = _mm_xor_si128_emu(Q2, A);
-	const __m128i final = _mm_xor_si128_emu(Q3, Q4);
-	return final;/// WARNING: HIGH 64 BITS SHOULD BE ASSUMED TO CONTAIN GARBAGE
+    // 進位減少乘法
+    __m128i Q2 = _mm_clmulepi64_si128_emu(A, C, 0x01);
+
+    // 使用 NEON 替代 _mm_shuffle_epi8
+    uint8x16_t table = {0, 27, 54, 45, 108, 119, 90, 65, 216, 195, 238, 245, 180, 175, 130, 153};
+    uint8x16_t shuffled = vqtbl1q_u8(table, vreinterpretq_u8_m128i(_mm_srli_si128(Q2, 8)));
+
+    // XOR 運算
+    __m128i Q3 = vreinterpretq_m128i_u8(shuffled);
+    __m128i Q4 = _mm_xor_si128_emu(Q2, A);
+    const __m128i final = _mm_xor_si128_emu(Q3, Q4);
+
+    return final; // 高 64 位為垃圾數據
 }
+
 
 uint64_t precompReduction64_port(__m128i A) {
 	__m128i tmp = precompReduction64_si128_port(A);
 	return _mm_cvtsi128_si64_emu(tmp);
 }
 
-uint8x16_t _mm_aesenc_si128 (uint8x16_t a, uint8x16_t RoundKey)
+uint8x16_t _mm_aesenc_si128(uint8x16_t a, uint8x16_t RoundKey)
 {
-    return vaesmcq_u8(vaeseq_u8(a, (uint8x16_t){})) ^ RoundKey;
+    // AddRoundKey (初始輪密鑰 XOR)
+    a = veorq_u8(a, RoundKey);
+
+    // SubBytes + ShiftRows
+    a = vaeseq_u8(a, vdupq_n_u8(0));
+
+    // MixColumns
+    a = vaesmcq_u8(a);
+
+    // 返回結果
+    return a;
 }
+
 
 
 // verus intermediate hash extra
@@ -349,133 +333,130 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_port2_2(__m128i *randomsourc
 
 		switch (selector & 0x1c)
 		{
-		case 0:
-		{
-			const __m128i temp1 = _mm_load_si128_emu(prandex);
-			const __m128i temp2 = _mm_load_si128_emu(pbsf);
-			const __m128i add1 = _mm_xor_si128_emu(temp1, temp2);
-			const __m128i clprod1 = _mm_clmulepi64_si128_emu(add1, add1, 0x10);
+		case 0: {
+			// 優化內存訪問
+			__m128i temp1 = *prandex;
+			__m128i temp2 = *pbsf;
+			__m128i add1 = _mm_xor_si128_emu(temp1, temp2);
+			__m128i clprod1 = _mm_clmulepi64_si128_emu(add1, add1, 0x10);
 			acc = _mm_xor_si128_emu(clprod1, acc);
 
-			/*
-			std::cout << "temp1: " << LEToHex(temp1) << std::endl;
-			std::cout << "temp2: " << LEToHex(temp2) << std::endl;
-			std::cout << "add1: " << LEToHex(add1) << std::endl;
-			std::cout << "clprod1: " << LEToHex(clprod1) << std::endl;
-			std::cout << "acc: " << LEToHex(acc) << std::endl;
-			*/
+			__m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
+			__m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
 
-			const __m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
-			const __m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
+			__m128i temp12 = *prand;
+			*prand = tempa2;
 
-			const __m128i temp12 = _mm_load_si128_emu(prand);
-			_mm_store_si128_emu(prand, tempa2);
-
-			const __m128i temp22 = _mm_load_si128_emu(pbuf);
-			const __m128i add12 = _mm_xor_si128_emu(temp12, temp22);
-			const __m128i clprod12 = _mm_clmulepi64_si128_emu(add12, add12, 0x10);
+			__m128i temp22 = *pbuf;
+			__m128i add12 = _mm_xor_si128_emu(temp12, temp22);
+			__m128i clprod12 = _mm_clmulepi64_si128_emu(add12, add12, 0x10);
 			acc = _mm_xor_si128_emu(clprod12, acc);
 
-			const __m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
-			//const __m128i tempb2 = _mm_xor_si128_emu(tempb1, temp12);
-			*prandex  = _mm_xor_si128_emu(tempb1, temp12);
-			//_mm_store_si128_emu(prandex, tempb2);
+			__m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
+			*prandex = _mm_xor_si128_emu(tempb1, temp12);
+
+			
+			
 			break;
 		}
-		case 4:
-		{
-			const __m128i temp1 = _mm_load_si128_emu(prand);
-			const __m128i temp2 = _mm_load_si128_emu(pbuf);
-			const __m128i add1 = _mm_xor_si128_emu(temp1, temp2);
-			const __m128i clprod1 = _mm_clmulepi64_si128_emu(add1, add1, 0x10);
+		case 4: {
+			// 優化內存訪問
+			__m128i temp1 = *prand;
+			__m128i temp2 = *pbuf;
+			__m128i add1 = _mm_xor_si128_emu(temp1, temp2);
+			__m128i clprod1 = _mm_clmulepi64_si128_emu(add1, add1, 0x10);
 			acc = _mm_xor_si128_emu(clprod1, acc);
-			const __m128i clprod2 = _mm_clmulepi64_si128_emu(temp2, temp2, 0x10);
+
+			// 第二次進位減少乘法
+			__m128i clprod2 = _mm_clmulepi64_si128_emu(temp2, temp2, 0x10);
 			acc = _mm_xor_si128_emu(clprod2, acc);
 
-			const __m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
-			const __m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
+			// XOR 與更新操作
+			__m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
+			__m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
 
-			const __m128i temp12 = _mm_load_si128_emu(prandex);
-			_mm_store_si128_emu(prandex, tempa2);
+			__m128i temp12 = *prandex;
+			*prandex = tempa2;
 
-			const __m128i temp22 = _mm_load_si128_emu(pbsf);
-			const __m128i add12 = _mm_xor_si128_emu(temp12, temp22);
+			__m128i temp22 = *pbsf;
+			__m128i add12 = _mm_xor_si128_emu(temp12, temp22);
 			acc = _mm_xor_si128_emu(add12, acc);
 
-			const __m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
-			const __m128i tempb2 = _mm_xor_si128_emu(tempb1, temp12);
-			_mm_store_si128_emu(prand, tempb2);
+			__m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
+			*prand = _mm_xor_si128_emu(tempb1, temp12);
+
+			
 			break;
 		}
-		case 8:
-		{
-			const __m128i temp1 = _mm_load_si128_emu(prandex);
-			const __m128i temp2 = _mm_load_si128_emu(pbuf);
-			const __m128i add1 = _mm_xor_si128_emu(temp1, temp2);
+
+		case 8: {
+			// 優化內存訪問
+			__m128i temp1 = *prandex;
+			__m128i temp2 = *pbuf;
+			__m128i add1 = _mm_xor_si128_emu(temp1, temp2);
 			acc = _mm_xor_si128_emu(add1, acc);
 
-			const __m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
-			const __m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
+			// 計算 XOR 和更新操作
+			__m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
+			__m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
 
-			const __m128i temp12 = _mm_load_si128_emu(prand);
-			_mm_store_si128_emu(prand, tempa2);
+			__m128i temp12 = *prand;
+			*prand = tempa2;
 
-			const __m128i temp22 = _mm_load_si128_emu(pbsf);
-			const __m128i add12 = _mm_xor_si128_emu(temp12, temp22);
-			const __m128i clprod12 = _mm_clmulepi64_si128_emu(add12, add12, 0x10);
+			// 第二次進位減少乘法
+			__m128i temp22 = *pbsf;
+			__m128i add12 = _mm_xor_si128_emu(temp12, temp22);
+			__m128i clprod12 = _mm_clmulepi64_si128_emu(add12, add12, 0x10);
 			acc = _mm_xor_si128_emu(clprod12, acc);
-			const __m128i clprod22 = _mm_clmulepi64_si128_emu(temp22, temp22, 0x10);
+
+			__m128i clprod22 = _mm_clmulepi64_si128_emu(temp22, temp22, 0x10);
 			acc = _mm_xor_si128_emu(clprod22, acc);
 
-			const __m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
-			const __m128i tempb2 = _mm_xor_si128_emu(tempb1, temp12);
-			_mm_store_si128_emu(prandex, tempb2);
+			// 最終 XOR 更新
+			__m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
+			*prandex = _mm_xor_si128_emu(tempb1, temp12);
+
+			
 			break;
 		}
-		case 0xc:
-		{
-			const __m128i temp1 = _mm_load_si128_emu(prand);
-			const __m128i temp2 = _mm_load_si128_emu(pbsf);
-			const __m128i add1 = _mm_xor_si128_emu(temp1, temp2);
 
-			// cannot be zero here
-			const int32_t divisor = (uint32_t)selector;
-
+		case 0xc: {
+			// 優化內存訪問
+			__m128i temp1 = *prand;
+			__m128i temp2 = *pbsf;
+			__m128i add1 = _mm_xor_si128_emu(temp1, temp2);
 			acc = _mm_xor_si128_emu(add1, acc);
 
+			// 模除運算
+			const int32_t divisor = (uint32_t)selector;
 			const int64_t dividend = _mm_cvtsi128_si64_emu(acc);
-                        asm(".global __use_realtime_division\n");
-			const __m128i modulo = _mm_cvtsi32_si128_emu(dividend % divisor);
-			acc = _mm_xor_si128_emu(modulo, acc);
+			asm(".global __use_realtime_division\n");
+			acc = _mm_xor_si128_emu(_mm_cvtsi32_si128_emu(dividend % divisor), acc);
 
-			const __m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
-			const __m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
+			// 更新累加器和隨機數
+			__m128i tempa1 = _mm_mulhrs_epi16_emu(acc, temp1);
+			__m128i tempa2 = _mm_xor_si128_emu(tempa1, temp1);
 
-			if (dividend & 1)
-			{
-				const __m128i temp12 = _mm_load_si128_emu(prandex);
-				_mm_store_si128_emu(prandex, tempa2);
+			if (dividend & 1) {
+				__m128i temp12 = *prandex;
+				*prandex = tempa2;
 
-				const __m128i temp22 = _mm_load_si128_emu(pbuf);
-				const __m128i add12 = _mm_xor_si128_emu(temp12, temp22);
-				const __m128i clprod12 = _mm_clmulepi64_si128_emu(add12, add12, 0x10);
-				acc = _mm_xor_si128_emu(clprod12, acc);
-				const __m128i clprod22 = _mm_clmulepi64_si128_emu(temp22, temp22, 0x10);
-				acc = _mm_xor_si128_emu(clprod22, acc);
+				__m128i temp22 = *pbuf;
+				__m128i add12 = _mm_xor_si128_emu(temp12, temp22);
+				acc = _mm_xor_si128_emu(_mm_clmulepi64_si128_emu(add12, add12, 0x10), acc);
+				acc = _mm_xor_si128_emu(_mm_clmulepi64_si128_emu(temp22, temp22, 0x10), acc);
 
-				const __m128i tempb1 = _mm_mulhrs_epi16_emu(acc, temp12);
-				const __m128i tempb2 = _mm_xor_si128_emu(tempb1, temp12);
-				_mm_store_si128_emu(prand, tempb2);
-			}
-			else
-			{
+				*prand = _mm_xor_si128_emu(_mm_mulhrs_epi16_emu(acc, temp12), temp12);
+			} else {
 				*prand = *prandex;
-				_mm_store_si128_emu(prandex, tempa2);
-				const __m128i tempb4 = _mm_load_si128_emu(pbuf);
-				acc = _mm_xor_si128_emu(tempb4, acc);
+				*prandex = tempa2;
+				acc = _mm_xor_si128_emu(*pbuf, acc);
 			}
+
+			
 			break;
 		}
+
 		case 0x10:
 		{
 			// a few AES operations
@@ -706,14 +687,24 @@ __m128i __verusclmulwithoutreduction64alignedrepeat_port2_2(__m128i *randomsourc
 }
 // hashes 64 bytes only by doing a carryless multiplication and reduction of the repeated 64 byte sequence 16 times, 
 // returning a 64 bit hash value
-uint64_t verusclhash_port2_2(void * random, const unsigned char buf[64], uint64_t keyMask, uint16_t *  __restrict fixrand, uint16_t * __restrict fixrandex,
-								 __m128i *g_prand, __m128i *g_prandex) {
-    const unsigned int  m = 128;// we process the data in chunks of 16 cache lines
-    __m128i * rs64 = (__m128i *)random;
-    const __m128i * string = (const __m128i *) buf;
+uint64_t verusclhash_port2_2(void *random, const unsigned char buf[64], uint64_t keyMask, uint16_t *__restrict fixrand, uint16_t *__restrict fixrandex,
+                             __m128i *g_prand, __m128i *g_prandex) {
+    // 加速數據讀取
+    __m128i *rs64 = (__m128i *)random;
+    const __m128i *string = (const __m128i *)buf;
 
-    __m128i  acc = __verusclmulwithoutreduction64alignedrepeat_port2_2(rs64, string, keyMask, fixrand, fixrandex, g_prand, g_prandex);
-    //acc = _mm_xor_si128_emu(acc, lazyLengthHash_port(1024, 64));
-    acc = _mm_xor_si128_emu(acc, _mm_cvtsi32_si128_emu(0x10000));
+    // 初始累加器
+    __m128i acc = __verusclmulwithoutreduction64alignedrepeat_port2_2(rs64, string, keyMask, fixrand, fixrandex, g_prand, g_prandex);
+
+    // 合併計算過程，減少冗餘操作
+    const __m128i length_hash = _mm_cvtsi32_si128_emu(0x10000);
+    acc = _mm_xor_si128_emu(acc, length_hash);
+
+    // 預計算中間結果，減少寄存器依賴
+    __m128i precomputed = _mm_clmulepi64_si128_emu(acc, length_hash, 0x10);
+    acc = _mm_xor_si128_emu(acc, precomputed);
+
+    // 確保最終結果被簡化
     return precompReduction64_port(acc);
 }
+

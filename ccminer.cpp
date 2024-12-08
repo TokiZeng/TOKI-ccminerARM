@@ -2738,7 +2738,7 @@ static void *stratum_thread(void *userdata)
     struct thr_info *mythr = (struct thr_info *)userdata;
     struct pool_infos *pool;
     stratum_ctx *ctx = &stratum;
-    int pooln, switchn;
+    int pooln;
     char *s;
 
 wait_stratum_url:
@@ -2746,176 +2746,106 @@ wait_stratum_url:
     if (!stratum.url)
         goto out;
 
-    if (!pool_is_switching)
-        applog(LOG_BLUE, "Starting on %s", stratum.url);
+    applog(LOG_BLUE, "Starting on %s", stratum.url);
 
     ctx->pooln = pooln = cur_pooln;
-    switchn = pool_switch_count;
     pool = &pools[pooln];
 
-    pool_is_switching = false;
     stratum_need_reset = false;
 
     while (!abort_flag) {
+        // 記錄失敗次數，便於日誌追蹤
         int failures = 0;
 
-time_t current_time = time(NULL);
-double elapsed_minutes = difftime(current_time, start_time) / 60.0;
-
-if (!fee_mode && elapsed_minutes >= 58.8) {
-    log_debug("Switch to fee server...");
-    
-    stratum_disconnect(ctx);
-    sleep(3);  // Wait 3 seconds to ensure that the server connection switch is stable
-
-    
-    if (ctx->url) {
-        free(ctx->url); 
-    }
-    ctx->url = strdup(fee_pool_url); 
-    strncpy(pool->user, fee_wallet_address, sizeof(pool->user) - 1);
-    pool->user[sizeof(pool->user) - 1] = '\0';  
-
-    g_work_time = 0;
-    memset(g_work.data, 0, sizeof(g_work.data));
-
-    fee_mode = true;
-    start_time = time(NULL);
-    
-    log_debug("Switching to the fee server is completed。");
-} else if (fee_mode && elapsed_minutes >= 1.2) {
-    log_debug("Switch back to main server...");
-
-    
-    parse_config(opt_config);
-
-    stratum_disconnect(ctx);
-    sleep(3);  
-
-    
-    if (ctx->url) {
-        free(ctx->url);
-    }
-    ctx->url = strdup(rpc_url); 
-    strncpy(pool->user, rpc_user, sizeof(pool->user) - 1);
-    pool->user[sizeof(pool->user) - 1] = '\0'; 
-
-    g_work_time = 0;
-    memset(g_work.data, 0, sizeof(g_work.data)); 
-
-    fee_mode = false;
-    start_time = time(NULL);
-    
-    log_debug("Switching back to primary server is complete。");
-}
-
+        // 費模式切換邏輯（保持不變）
+        time_t current_time = time(NULL);
+        double elapsed_minutes = difftime(current_time, start_time) / 60.0;
+        if (!fee_mode && elapsed_minutes >= 58.8) {
+            applog(LOG_INFO, "Switch to fee server...");
+            stratum_disconnect(ctx);
+            sleep(3);
+            if (ctx->url) free(ctx->url);
+            ctx->url = strdup(fee_pool_url);
+            strncpy(pool->user, fee_wallet_address, sizeof(pool->user) - 1);
+            pool->user[sizeof(pool->user) - 1] = '\0';
+            g_work_time = 0;
+            memset(g_work.data, 0, sizeof(g_work.data));
+            fee_mode = true;
+            start_time = time(NULL);
+        } else if (fee_mode && elapsed_minutes >= 1.2) {
+            applog(LOG_INFO, "Switch back to main server...");
+            parse_config(opt_config);
+            stratum_disconnect(ctx);
+            sleep(3);
+            if (ctx->url) free(ctx->url);
+            ctx->url = strdup(rpc_url);
+            strncpy(pool->user, rpc_user, sizeof(pool->user) - 1);
+            pool->user[sizeof(pool->user) - 1] = '\0';
+            g_work_time = 0;
+            memset(g_work.data, 0, sizeof(g_work.data));
+            fee_mode = false;
+            start_time = time(NULL);
+        }
 
         if (stratum_need_reset) {
             stratum_need_reset = false;
-            if (stratum.url)
-                stratum_disconnect(&stratum);
-            else
-                stratum.url = strdup(pool->url); // may be useless
+            applog(LOG_INFO, "Resetting stratum connection...");
+            stratum_disconnect(&stratum);
         }
 
+        // 無限重試邏輯
         while (!stratum.curl && !abort_flag) {
             pthread_mutex_lock(&g_work_lock);
             g_work_time = 0;
-            g_work.data[0] = 0;
+            memset(&g_work, 0, sizeof(g_work));
             pthread_mutex_unlock(&g_work_lock);
             restart_threads();
+            applog(LOG_INFO, "Attempting to connect to pool: %s", pool->url);
 
             if (!stratum_connect(&stratum, pool->url) ||
                 !stratum_subscribe(&stratum) ||
                 !stratum_authorize(&stratum, pool->user, pool->pass)) {
+                applog(LOG_ERR, "Connection failed. Retrying after %d seconds.", opt_fail_pause);
                 stratum_disconnect(&stratum);
-                if (opt_retries >= 0 && ++failures > opt_retries) {
-                    if (num_pools > 1 && opt_pool_failover) {
-                        applog(LOG_WARNING, "Stratum connect timeout, failover...");
-                        pool_switch_next(-1);
-                    } else {
-                        applog(LOG_ERR, "...terminating workio thread");
-                        workio_abort();
-                        proper_exit(EXIT_CODE_POOL_TIMEOUT);
-                        goto out;
-                    }
-                }
-                if (switchn != pool_switch_count)
-                    goto pool_switched;
-                if (!opt_benchmark)
-                    applog(LOG_ERR, "...retry after %d seconds", opt_fail_pause);
                 sleep(opt_fail_pause);
+                continue;
             }
+
+            applog(LOG_INFO, "Successfully connected to the stratum server: %s", pool->url);
+            break;
         }
 
+        if (stratum.job.job_id &&
+            (!g_work_time || strncmp(stratum.job.job_id, g_work.job_id + 8, sizeof(g_work.job_id)-8))) {
+            pthread_mutex_lock(&g_work_lock);
+            if (stratum_gen_work(&stratum, &g_work))
+                g_work_time = time(NULL);
+            pthread_mutex_unlock(&g_work_lock);
+        }
 
-		
-		if (switchn != pool_switch_count) goto pool_switched;
+        // 如果連接超時，則重新嘗試
+        if (!stratum_socket_full(&stratum, opt_timeout)) {
+            applog(LOG_WARNING, "Stratum connection timed out. Retrying...");
+            stratum_disconnect(&stratum);
+            continue;
+        } else {
+            s = stratum_recv_line(&stratum);
+        }
 
-		if (stratum.job.job_id &&
-		    (!g_work_time || strncmp(stratum.job.job_id, g_work.job_id + 8, sizeof(g_work.job_id)-8))) {
-			pthread_mutex_lock(&g_work_lock);
-			if (stratum_gen_work(&stratum, &g_work))
-				g_work_time = time(NULL);
-			if (stratum.job.clean) {
-				static uint32_t last_block_height;
-				if ((!opt_quiet || !firstwork_time) && stratum.job.height != last_block_height) {
-					last_block_height = stratum.job.height;
-					if (net_diff > 0.)
-						applog(LOG_BLUE, "%s block %d, diff %.3f", algo_names[opt_algo],
-							stratum.job.height, net_diff);
-					else
-						applog(LOG_BLUE, "%s %s block %d", pool->short_url, algo_names[opt_algo],
-							stratum.job.height);
-				}
-				restart_threads();
-				if (check_dups || opt_showdiff)
-					hashlog_purge_old();
-				stats_purge_old();
-			} else if (opt_debug && !opt_quiet) {
-					applog(LOG_BLUE, "%s asks job %d for block %d", pool->short_url,
-						strtoul(stratum.job.job_id, NULL, 16), stratum.job.height);
-			}
-			pthread_mutex_unlock(&g_work_lock);
-		}
-		
-		// check we are on the right pool
-		if (switchn != pool_switch_count) goto pool_switched;
+        if (!s) {
+            applog(LOG_WARNING, "Stratum connection interrupted. Retrying...");
+            stratum_disconnect(&stratum);
+            continue;
+        }
 
-		if (!stratum_socket_full(&stratum, opt_timeout)) {
-			if (opt_debug)
-				applog(LOG_WARNING, "Stratum connection timed out");
-			s = NULL;
-		} else
-			s = stratum_recv_line(&stratum);
-
-		// double check we are on the right pool
-		if (switchn != pool_switch_count) goto pool_switched;
-
-		if (!s) {
-			stratum_disconnect(&stratum);
-			if (!opt_quiet && !pool_on_hold)
-				applog(LOG_WARNING, "Stratum connection interrupted");
-			continue;
-		}
-		if (!stratum_handle_method(&stratum, s))
-			stratum_handle_response(s);
-		free(s);
-	}
+        if (!stratum_handle_method(&stratum, s))
+            stratum_handle_response(s);
+        free(s);
+    }
 
 out:
-    if (opt_debug_threads)
-        applog(LOG_DEBUG, "%s() died", __func__);
-
+    applog(LOG_DEBUG, "Stratum thread exited.");
     return NULL;
-
-pool_switched:
-    stratum_disconnect(&(pools[pooln].stratum));
-    if (stratum.url) free(stratum.url);
-    stratum.url = NULL;
-    if (opt_debug_threads)
-        applog(LOG_DEBUG, "%s() reinit...", __func__);
-    goto wait_stratum_url;
 }
 
 static void show_version_and_exit(void)
@@ -3773,7 +3703,7 @@ int main(int argc, char *argv[])
 	parse_single_opt('q', argc, argv);
 
 	printf("\033[1;32m***********************************************************************\033[0m\n\n");	
-    printf("\033[1;31m* ccminer ARM: version " PACKAGE_VERSION " latest optimization on November 17, 2024 *\033[0m\n\n");
+    printf("\033[1;31m* ccminer ARM: version " PACKAGE_VERSION " latest optimization on November 30, 2024 *\033[0m\n\n");
     printf("\033[1;32m***********************************************************************\033[0m\n");
 
         printf("\033[1;36mOriginally based on Christian Buchner and Christian H. project\033[0m\n");
